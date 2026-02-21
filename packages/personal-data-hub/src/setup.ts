@@ -6,6 +6,10 @@
  * on the main Peekaboo source.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
 export interface HealthCheckResult {
   ok: boolean;
   version?: string;
@@ -15,6 +19,31 @@ export interface CreateApiKeyResult {
   ok: boolean;
   id: string;
   key: string;
+}
+
+export interface Credentials {
+  hubUrl: string;
+  apiKey: string;
+  hubDir?: string;
+}
+
+/** Path to the credentials file written by `npx peekaboo init`. */
+export const CREDENTIALS_PATH = join(homedir(), '.peekaboo', 'credentials.json');
+
+/**
+ * Read credentials from ~/.peekaboo/credentials.json.
+ * Returns null if the file doesn't exist or is malformed.
+ */
+export function readCredentials(): Credentials | null {
+  try {
+    if (!existsSync(CREDENTIALS_PATH)) return null;
+    const raw = readFileSync(CREDENTIALS_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed.hubUrl && parsed.apiKey) return parsed as Credentials;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**

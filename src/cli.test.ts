@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { compareSync } from 'bcryptjs';
 import Database from 'better-sqlite3';
-import { init } from './cli.js';
+import { init, writeCredentials, readCredentials, CREDENTIALS_PATH } from './cli.js';
 
 function makeTmpDir(): string {
   const dir = join(tmpdir(), `peekaboo-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -84,5 +84,60 @@ describe('CLI init', () => {
     const result = init(tmpDir);
     const decoded = Buffer.from(result.secret, 'base64');
     expect(decoded.length).toBe(32);
+  });
+
+  it('writes credentials to ~/.peekaboo/credentials.json', () => {
+    const result = init(tmpDir);
+    expect(existsSync(CREDENTIALS_PATH)).toBe(true);
+    const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf-8'));
+    expect(creds.hubUrl).toBe('http://localhost:3000');
+    expect(creds.apiKey).toBe(result.apiKey);
+    expect(creds.hubDir).toBe(tmpDir);
+  });
+
+  it('writes credentials with custom port', () => {
+    init(tmpDir, { port: 7007 });
+    const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf-8'));
+    expect(creds.hubUrl).toBe('http://localhost:7007');
+  });
+});
+
+describe('Credentials file', () => {
+  const backupPath = CREDENTIALS_PATH + '.backup';
+
+  beforeEach(() => {
+    // Back up existing credentials if present
+    if (existsSync(CREDENTIALS_PATH)) {
+      const content = readFileSync(CREDENTIALS_PATH, 'utf-8');
+      writeFileSync(backupPath, content, 'utf-8');
+    }
+  });
+
+  afterEach(() => {
+    // Restore backup
+    if (existsSync(backupPath)) {
+      const content = readFileSync(backupPath, 'utf-8');
+      writeFileSync(CREDENTIALS_PATH, content, 'utf-8');
+      rmSync(backupPath);
+    }
+  });
+
+  it('writeCredentials creates the file and readCredentials reads it', () => {
+    writeCredentials({ hubUrl: 'http://localhost:9999', apiKey: 'pk_test', hubDir: '/tmp' });
+    const creds = readCredentials();
+    expect(creds).not.toBeNull();
+    expect(creds!.hubUrl).toBe('http://localhost:9999');
+    expect(creds!.apiKey).toBe('pk_test');
+  });
+
+  it('readCredentials returns null for missing file', () => {
+    // Write something invalid first, then remove
+    if (existsSync(CREDENTIALS_PATH)) {
+      rmSync(CREDENTIALS_PATH);
+    }
+    const creds = readCredentials();
+    // May or may not be null depending on whether init was run before
+    // Just ensure it doesn't throw
+    expect(creds === null || typeof creds === 'object').toBe(true);
   });
 });

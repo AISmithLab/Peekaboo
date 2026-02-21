@@ -4,14 +4,17 @@
  * Registers tools that let the agent pull personal data and propose
  * outbound actions through the Peekaboo access control gateway.
  *
- * Supports auto-setup: if hubUrl/apiKey are not configured, the extension
- * will try to discover a running Peekaboo hub and create an API key.
+ * Config resolution order:
+ *   1. Plugin config (hubUrl + apiKey passed directly)
+ *   2. Environment variables (PEEKABOO_HUB_URL + PEEKABOO_API_KEY)
+ *   3. Credentials file (~/.peekaboo/credentials.json, written by npx peekaboo init)
+ *   4. Auto-discovery (probe localhost, create API key)
  */
 
 import { HubClient } from './hub-client.js';
 import { createPullTool, createProposeTool } from './tools.js';
 import { PERSONAL_DATA_SYSTEM_PROMPT } from './prompts.js';
-import { discoverHub, checkHub, createApiKey } from './setup.js';
+import { discoverHub, checkHub, createApiKey, readCredentials } from './setup.js';
 
 export interface PersonalDataHubPluginConfig {
   hubUrl: string;
@@ -65,7 +68,7 @@ export default {
   }) {
     let config = api.pluginConfig as PersonalDataHubPluginConfig | undefined;
 
-    // Check environment variables (ClawHub injects these from skills.entries.peekaboo.env)
+    // Step 2: Check environment variables (ClawHub injects from skills.entries.peekaboo.env)
     if (!config?.hubUrl || !config?.apiKey) {
       const envHubUrl = process.env.PEEKABOO_HUB_URL;
       const envApiKey = process.env.PEEKABOO_API_KEY;
@@ -75,7 +78,16 @@ export default {
       }
     }
 
-    // Auto-setup: try to discover hub and create API key if config is still incomplete
+    // Step 3: Check credentials file (~/.peekaboo/credentials.json)
+    if (!config?.hubUrl || !config?.apiKey) {
+      const creds = readCredentials();
+      if (creds) {
+        config = { hubUrl: creds.hubUrl, apiKey: creds.apiKey };
+        api.logger.info(`PersonalDataHub: Configured from credentials file (hub: ${creds.hubUrl})`);
+      }
+    }
+
+    // Step 4: Auto-discovery — probe localhost and create API key
     if (!config?.hubUrl || !config?.apiKey) {
       api.logger.info('PersonalDataHub: Config incomplete, attempting auto-setup...');
 
@@ -83,7 +95,6 @@ export default {
         let hubUrl = config?.hubUrl;
         let apiKey = config?.apiKey;
 
-        // If no hubUrl, try to discover a running hub
         if (!hubUrl) {
           hubUrl = await discoverHub() ?? undefined;
           if (hubUrl) {
@@ -91,7 +102,6 @@ export default {
           }
         }
 
-        // If we have a hubUrl but no apiKey, try to create one
         if (hubUrl && !apiKey) {
           const health = await checkHub(hubUrl);
           if (health.ok) {
@@ -115,10 +125,10 @@ export default {
 
     if (!config?.hubUrl || !config?.apiKey) {
       api.logger.warn(
-        'PersonalDataHub: Missing hubUrl or apiKey. Auto-setup could not find a running hub.\n' +
+        'PersonalDataHub: Missing hubUrl or apiKey. Could not find a running hub.\n' +
         '  To set up Peekaboo:\n' +
         '  1. Run: npx peekaboo init\n' +
-        '  2. Start the server: node dist/index.js\n' +
+        '  2. Run: npx peekaboo start\n' +
         '  3. Restart this extension — it will auto-connect.\n' +
         '  Or configure manually: { "hubUrl": "http://localhost:3000", "apiKey": "pk_..." }',
       );
@@ -132,11 +142,9 @@ export default {
 
     api.logger.info(`PersonalDataHub: Registering tools (hub: ${config.hubUrl})`);
 
-    // Register the two tools
     api.registerTool(createPullTool(client));
     api.registerTool(createProposeTool(client));
 
-    // Inject system prompt before agent starts
     api.on('before_agent_start', async (_event: unknown) => {
       return { systemPromptAppend: PERSONAL_DATA_SYSTEM_PROMPT };
     });
@@ -148,4 +156,4 @@ export { HubClient, HubApiError } from './hub-client.js';
 export type { HubClientConfig, PullParams, ProposeParams, PullResult, ProposeResult } from './hub-client.js';
 export { createPullTool, createProposeTool } from './tools.js';
 export { PERSONAL_DATA_SYSTEM_PROMPT } from './prompts.js';
-export { checkHub, createApiKey, autoSetup, discoverHub } from './setup.js';
+export { checkHub, createApiKey, autoSetup, discoverHub, readCredentials } from './setup.js';

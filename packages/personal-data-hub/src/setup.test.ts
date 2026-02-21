@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkHub, createApiKey, autoSetup, discoverHub, DEFAULT_HUB_URLS } from './setup.js';
+import { checkHub, createApiKey, autoSetup, discoverHub, readCredentials, DEFAULT_HUB_URLS, CREDENTIALS_PATH } from './setup.js';
 
 describe('Setup Module', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
@@ -127,6 +127,19 @@ describe('Setup Module', () => {
     it('probes expected default URLs', () => {
       expect(DEFAULT_HUB_URLS).toContain('http://localhost:3000');
       expect(DEFAULT_HUB_URLS).toContain('http://localhost:7007');
+    });
+  });
+
+  describe('readCredentials', () => {
+    it('returns credentials from file or null without throwing', () => {
+      // This test just verifies readCredentials doesn't throw
+      const creds = readCredentials();
+      expect(creds === null || (typeof creds === 'object' && !!creds.hubUrl && !!creds.apiKey)).toBe(true);
+    });
+
+    it('exports CREDENTIALS_PATH', () => {
+      expect(CREDENTIALS_PATH).toContain('.peekaboo');
+      expect(CREDENTIALS_PATH).toContain('credentials.json');
     });
   });
 });

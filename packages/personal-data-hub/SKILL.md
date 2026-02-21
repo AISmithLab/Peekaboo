@@ -1,18 +1,17 @@
 ---
-name: Peekaboo Personal Data Hub
+name: PersonalDataHub
 description: Pull personal data (emails, issues) and propose outbound actions (drafts, replies) through the Peekaboo access control gateway. Data is filtered, redacted, and shaped by the owner's policy before reaching the agent.
 version: 0.1.0
-skillKey: peekaboo-personal-data-hub
+skillKey: personaldatahub
 emoji: 🔐
 homepage: https://github.com/AISmithLab/Peekaboo
 os: darwin, linux, win32
-install: cd ../../ && pnpm install && pnpm build && npx peekaboo init "OpenClaw Agent"
-metadata: {"openclaw":{"requires":{"env":["PEEKABOO_HUB_URL","PEEKABOO_API_KEY"]}}}
-primaryEnv: peekaboo
+install: cd ../../ && pnpm install && pnpm build && npx peekaboo init "OpenClaw Agent" && npx peekaboo start
+metadata: {}
 always: false
 ---
 
-# Peekaboo Personal Data Hub
+# PersonalDataHub
 
 Access personal data from Gmail, GitHub, and other sources through the Peekaboo access control gateway. The data owner controls what the agent can see, which fields are visible, what gets redacted, and which actions are allowed.
 
@@ -54,20 +53,14 @@ Draft a reply to Alice's Q4 report email thanking her for the numbers.
 
 ## Setup
 
-The install hook bootstraps Peekaboo automatically. After installation:
+The install hook bootstraps Peekaboo automatically:
+1. Installs dependencies, builds the project, initializes the database
+2. Creates an API key and saves it to `~/.peekaboo/credentials.json`
+3. Starts the server in the background
 
-1. Start the Peekaboo server: `node dist/index.js` (from the Peekaboo directory)
-2. Configure your OpenClaw environment with the API key printed during install
-3. Open `http://localhost:3000` to connect Gmail/GitHub via OAuth
+After installation, open `http://localhost:3000` to connect Gmail/GitHub via OAuth.
 
-## Environment Variables
-
-Configure in your OpenClaw config under `skills.entries.peekaboo.env`:
-
-| Variable | Description |
-|----------|-------------|
-| `PEEKABOO_HUB_URL` | Base URL of the Peekaboo hub (e.g., `http://localhost:3000`) |
-| `PEEKABOO_API_KEY` | API key generated during setup (e.g., `pk_abc123...`) |
+The extension reads credentials automatically from `~/.peekaboo/credentials.json` — no manual configuration needed.
 
 ## Query Syntax (Gmail)
 

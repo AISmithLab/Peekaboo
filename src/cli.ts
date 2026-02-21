@@ -1,16 +1,59 @@
 /**
- * Peekaboo CLI — bootstrap a new installation.
+ * Peekaboo CLI — bootstrap and manage a Peekaboo installation.
  *
  * Usage:
- *   npx peekaboo init [app-name]
- *   node dist/cli.js init [app-name]
+ *   npx peekaboo init [app-name]    Bootstrap a new installation
+ *   npx peekaboo start              Start the server in the background
+ *   npx peekaboo stop               Stop the background server
+ *   npx peekaboo status             Check if the server is running
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { homedir } from 'node:os';
+import { spawn } from 'node:child_process';
 import { hashSync } from 'bcryptjs';
 import { getDb } from './db/db.js';
+
+// --- Credentials file path ---
+
+export const CREDENTIALS_DIR = join(homedir(), '.peekaboo');
+export const CREDENTIALS_PATH = join(CREDENTIALS_DIR, 'credentials.json');
+const PID_PATH = join(CREDENTIALS_DIR, 'server.pid');
+
+export interface Credentials {
+  hubUrl: string;
+  apiKey: string;
+  hubDir: string;
+}
+
+/**
+ * Write credentials to ~/.peekaboo/credentials.json.
+ * Creates the directory if it doesn't exist.
+ */
+export function writeCredentials(creds: Credentials): void {
+  mkdirSync(CREDENTIALS_DIR, { recursive: true });
+  writeFileSync(CREDENTIALS_PATH, JSON.stringify(creds, null, 2) + '\n', 'utf-8');
+}
+
+/**
+ * Read credentials from ~/.peekaboo/credentials.json.
+ * Returns null if the file doesn't exist or is malformed.
+ */
+export function readCredentials(): Credentials | null {
+  try {
+    if (!existsSync(CREDENTIALS_PATH)) return null;
+    const raw = readFileSync(CREDENTIALS_PATH, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed.hubUrl && parsed.apiKey) return parsed as Credentials;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// --- Init ---
 
 export interface InitResult {
   secret: string;
@@ -18,6 +61,7 @@ export interface InitResult {
   dbPath: string;
   configPath: string;
   envPath: string;
+  credentialsPath: string;
 }
 
 export interface InitOptions {
@@ -29,10 +73,8 @@ export interface InitOptions {
  * Bootstrap a new Peekaboo installation.
  *
  * Generates a master secret, writes .env and hub-config.yaml,
- * initializes the database, and creates the first API key.
- *
- * @param targetDir - Directory to initialize in (defaults to cwd)
- * @param options - Optional overrides
+ * initializes the database, creates the first API key,
+ * and writes credentials to ~/.peekaboo/credentials.json.
  */
 export function init(targetDir?: string, options?: InitOptions): InitResult {
   const dir = targetDir ?? process.cwd();
@@ -80,7 +122,85 @@ export function init(targetDir?: string, options?: InitOptions): InitResult {
 
   db.close();
 
-  return { secret, apiKey: rawKey, dbPath, configPath, envPath };
+  // Write credentials file for auto-discovery by the extension
+  const hubUrl = `http://localhost:${port}`;
+  writeCredentials({ hubUrl, apiKey: rawKey, hubDir: dir });
+
+  return { secret, apiKey: rawKey, dbPath, configPath, envPath, credentialsPath: CREDENTIALS_PATH };
+}
+
+// --- Start / Stop / Status ---
+
+/**
+ * Start the Peekaboo server in the background.
+ * Spawns a detached node process and writes the PID to ~/.peekaboo/server.pid.
+ */
+export function startBackground(hubDir?: string): { pid: number; hubDir: string } {
+  const dir = hubDir ?? readCredentials()?.hubDir ?? process.cwd();
+  const indexPath = resolve(dir, 'dist', 'index.js');
+
+  if (!existsSync(indexPath)) {
+    throw new Error(`Server entry not found at ${indexPath}. Run 'pnpm build' first.`);
+  }
+
+  // Check if already running
+  const existing = getServerPid();
+  if (existing !== null) {
+    try {
+      process.kill(existing, 0); // Check if process exists
+      throw new Error(`Server is already running (PID ${existing}). Run 'npx peekaboo stop' first.`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+      // Process doesn't exist, stale PID file — clean up
+    }
+  }
+
+  const child = spawn('node', [indexPath], {
+    cwd: dir,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env },
+  });
+
+  child.unref();
+
+  const pid = child.pid!;
+  mkdirSync(CREDENTIALS_DIR, { recursive: true });
+  writeFileSync(PID_PATH, String(pid), 'utf-8');
+
+  return { pid, hubDir: dir };
+}
+
+/**
+ * Stop the background Peekaboo server.
+ */
+export function stopBackground(): boolean {
+  const pid = getServerPid();
+  if (pid === null) return false;
+
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch {
+    // Process already gone
+  }
+
+  try { unlinkSync(PID_PATH); } catch { /* ignore */ }
+  return true;
+}
+
+/**
+ * Get the PID of the background server, or null if not running.
+ */
+export function getServerPid(): number | null {
+  try {
+    if (!existsSync(PID_PATH)) return null;
+    const pid = parseInt(readFileSync(PID_PATH, 'utf-8').trim(), 10);
+    if (isNaN(pid)) return null;
+    process.kill(pid, 0); // Check if process exists
+    return pid;
+  } catch {
+    return null;
+  }
 }
 
 // --- CLI runner (only executes when this file is the entry point) ---
@@ -97,19 +217,46 @@ if (isDirectRun) {
       console.log(`  .env created            ${result.envPath}`);
       console.log(`  hub-config.yaml created  ${result.configPath}`);
       console.log(`  Database created         ${result.dbPath}`);
-      console.log(`\n  API Key (save this — shown only once):`);
+      console.log(`  Credentials saved        ${result.credentialsPath}`);
+      console.log(`\n  API Key (auto-configured for extensions):`);
       console.log(`    ${result.apiKey}\n`);
       console.log('  Next steps:');
-      console.log('    1. Start the server:  node dist/index.js');
+      console.log('    1. Start the server:  npx peekaboo start');
       console.log('    2. Open the GUI:      http://localhost:3000');
       console.log('    3. Connect sources and configure access policies\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
     }
+  } else if (command === 'start') {
+    try {
+      const result = startBackground();
+      console.log(`\n  Peekaboo server started in background (PID ${result.pid})`);
+      console.log(`  Hub directory: ${result.hubDir}`);
+      console.log(`  GUI: http://localhost:3000\n`);
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  } else if (command === 'stop') {
+    if (stopBackground()) {
+      console.log('\n  Peekaboo server stopped.\n');
+    } else {
+      console.log('\n  No running Peekaboo server found.\n');
+    }
+  } else if (command === 'status') {
+    const pid = getServerPid();
+    if (pid !== null) {
+      console.log(`\n  Peekaboo server is running (PID ${pid})\n`);
+    } else {
+      console.log('\n  Peekaboo server is not running.\n');
+    }
   } else {
     console.log('Peekaboo CLI v0.1.0');
     console.log('\nUsage:');
     console.log('  npx peekaboo init [app-name]   Bootstrap a new Peekaboo installation');
+    console.log('  npx peekaboo start             Start the server in the background');
+    console.log('  npx peekaboo stop              Stop the background server');
+    console.log('  npx peekaboo status            Check if the server is running');
   }
 }

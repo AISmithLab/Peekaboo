@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+// Mock readCredentials so tests don't depend on real ~/.peekaboo/credentials.json
+vi.mock('./setup.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    readCredentials: vi.fn(() => null),
+  };
+});
+
 import plugin from './index.js';
 
 describe('PersonalDataHub Plugin', () => {
@@ -184,6 +194,31 @@ describe('PersonalDataHub Plugin', () => {
       await plugin.register(api);
 
       expect(registerTool).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses credentials file when pluginConfig and env vars are missing', async () => {
+      const { readCredentials } = await import('./setup.js');
+      const mockedReadCredentials = vi.mocked(readCredentials);
+      mockedReadCredentials.mockReturnValueOnce({
+        hubUrl: 'http://localhost:5555',
+        apiKey: 'pk_creds_file_key',
+      });
+
+      const registerTool = vi.fn();
+      const on = vi.fn();
+      const api = {
+        pluginConfig: undefined,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        registerTool,
+        on,
+      };
+
+      await plugin.register(api);
+
+      expect(registerTool).toHaveBeenCalledTimes(2);
+      expect(api.logger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Configured from credentials file'),
+      );
     });
 
     it('uses environment variables when pluginConfig is missing (ClawHub pattern)', async () => {

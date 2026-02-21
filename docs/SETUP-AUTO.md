@@ -18,52 +18,26 @@ Peekaboo can be installed as an OpenClaw skill through [ClawHub](https://theoper
 ### Step 1: Install the Skill
 
 ```bash
-clawhub install peekaboo-personal-data-hub
+clawhub install personaldatahub
 ```
 
 This downloads the skill and runs the install hook, which:
 1. Installs dependencies (`pnpm install`)
 2. Builds the project (`pnpm build`)
 3. Runs `npx peekaboo init "OpenClaw Agent"` — generates a master secret, config, database, and API key
+4. Saves credentials to `~/.peekaboo/credentials.json` (auto-read by the extension)
+5. Starts the server in the background (`npx peekaboo start`)
 
-Save the API key printed to the console.
+No manual configuration needed — the extension reads credentials automatically.
 
-### Step 2: Configure Environment
-
-Add your Peekaboo credentials to your OpenClaw config:
-
-```json
-{
-  "skills": {
-    "entries": {
-      "peekaboo": {
-        "env": {
-          "PEEKABOO_HUB_URL": "http://localhost:3000",
-          "PEEKABOO_API_KEY": "pk_your_key_from_step_1"
-        }
-      }
-    }
-  }
-}
-```
-
-### Step 3: Start the Server
-
-```bash
-cd peekaboo
-node dist/index.js
-```
-
-The server starts at `http://localhost:3000`.
-
-### Step 4: Connect Data Sources
+### Step 2: Connect Data Sources
 
 Open `http://localhost:3000` in your browser:
 
 1. **Gmail** — Click "Connect Gmail" to start OAuth. Configure access boundaries (date range, labels, field access, redaction rules).
 2. **GitHub** — Click "Connect GitHub" to start OAuth. Select which repos the agent can access and at what permission level.
 
-### Step 5: Verify
+### Step 3: Verify
 
 Ask your AI agent:
 
@@ -76,7 +50,7 @@ The agent uses `personal_data_pull` through Peekaboo. Verify in the GUI:
 ### Updating
 
 ```bash
-clawhub update peekaboo-personal-data-hub
+clawhub update personaldatahub
 ```
 
 ---
@@ -94,18 +68,7 @@ pnpm install && pnpm build
 npx peekaboo init
 ```
 
-Output:
-
-```
-  Peekaboo initialized successfully!
-
-  .env created            /path/to/peekaboo/.env
-  hub-config.yaml created  /path/to/peekaboo/hub-config.yaml
-  Database created         /path/to/peekaboo/peekaboo.db
-
-  API Key (save this — shown only once):
-    pk_abc123def456...
-```
+This generates a master secret, config, database, API key, and saves credentials to `~/.peekaboo/credentials.json`.
 
 You can pass a custom app name:
 
@@ -116,36 +79,28 @@ npx peekaboo init "My AI Agent"
 ### Step 2: Start the Server
 
 ```bash
-node dist/index.js
+npx peekaboo start
 ```
 
-Verify it's running:
+This starts the server in the background. Verify it's running:
 
 ```bash
-curl http://localhost:3000/health
-# {"ok":true,"version":"0.1.0"}
+npx peekaboo status
+# or: curl http://localhost:3000/health
+```
+
+Other server commands:
+
+```bash
+npx peekaboo stop     # Stop the background server
+npx peekaboo status   # Check if the server is running
 ```
 
 ### Step 3: Install the Extension in OpenClaw
 
-The extension is in `packages/personal-data-hub/`.
+The extension is in `packages/personal-data-hub/`. It reads credentials automatically from `~/.peekaboo/credentials.json` — no manual configuration needed.
 
-**Auto-discovery**: If the Peekaboo hub is running on `localhost:3000` or `localhost:7007`, the extension auto-discovers it and creates an API key. No configuration needed.
-
-```
-PersonalDataHub: Discovered hub at http://localhost:3000
-PersonalDataHub: Auto-created API key. Save this for your config: pk_...
-PersonalDataHub: Registering tools (hub: http://localhost:3000)
-```
-
-**Manual configuration**: If the hub is on a non-default port, configure the extension:
-
-```json
-{
-  "hubUrl": "http://localhost:3000",
-  "apiKey": "pk_your_key_from_step_1"
-}
-```
+If the credentials file doesn't exist, the extension falls back to auto-discovery (probes `localhost:3000` and `localhost:7007`).
 
 ### Step 4: Connect Data Sources
 
@@ -155,23 +110,25 @@ Open `http://localhost:3000` in your browser. Connect Gmail and GitHub via OAuth
 
 ## How Auto-Setup Works
 
-When the extension starts without a complete config (`hubUrl` + `apiKey`):
+When the extension starts, it resolves config in this order:
 
-1. **Discovery** — probes `localhost:3000`, `localhost:7007`, `127.0.0.1:3000`, `127.0.0.1:7007` for a running hub by calling `GET /health`
-2. **API key creation** — if a hub is found, calls `POST /api/keys` to create an API key for "OpenClaw Agent"
-3. **Registration** — uses the discovered URL and created key to register the `personal_data_pull` and `personal_data_propose` tools
+1. **Plugin config** — `hubUrl` + `apiKey` passed directly
+2. **Environment variables** — `PEEKABOO_HUB_URL` + `PEEKABOO_API_KEY`
+3. **Credentials file** — reads `~/.peekaboo/credentials.json` (written by `npx peekaboo init`)
+4. **Auto-discovery** — probes `localhost:3000`, `localhost:7007`, `127.0.0.1:3000`, `127.0.0.1:7007` for a running hub, then creates an API key
 
-If no hub is found, the extension logs setup instructions and gracefully degrades (no tools registered).
+If no config is found at any step, the extension logs setup instructions and gracefully degrades (no tools registered).
 
 ## What `npx peekaboo init` Does
 
-The init command creates three files:
+The init command creates:
 
 | File | Purpose |
 |------|---------|
 | `.env` | Contains `PEEKABOO_SECRET=<random 32-byte base64>` — the master encryption key for cached data |
 | `hub-config.yaml` | Minimal config with `sources: {}` and `port: 3000` — sources are configured via the GUI |
 | `peekaboo.db` | SQLite database with all tables initialized (api_keys, manifests, cached_data, staging, audit_log) |
+| `~/.peekaboo/credentials.json` | Credentials for the extension (`hubUrl`, `apiKey`, `hubDir`) — auto-read at startup |
 
 It also creates one API key and prints it to the console.
 
@@ -181,27 +138,28 @@ To publish or update the skill on ClawHub:
 
 ```bash
 clawhub publish packages/personal-data-hub \
-  --slug peekaboo-personal-data-hub \
-  --name "Peekaboo Personal Data Hub" \
+  --slug personaldatahub \
+  --name "PersonalDataHub" \
   --version 0.1.0 \
   --tags latest
 ```
 
 ## Troubleshooting
 
-**Extension says "Missing hubUrl or apiKey. Auto-setup could not find a running hub."**
-- Make sure Peekaboo is running: `curl http://localhost:3000/health`
-- If not running, start it: `node dist/index.js`
-- If running on a non-default port, configure manually with `PEEKABOO_HUB_URL`
+**Extension says "Missing hubUrl or apiKey"**
+- Make sure Peekaboo is running: `npx peekaboo status`
+- If not running, start it: `npx peekaboo start`
+- Check credentials exist: `cat ~/.peekaboo/credentials.json`
+- If no credentials, re-run: `npx peekaboo init`
 
 **`npx peekaboo init` fails with ".env already exists"**
-- You've already initialized. Just start the server: `node dist/index.js`
+- You've already initialized. Just start the server: `npx peekaboo start`
 - To re-initialize, delete `.env`, `hub-config.yaml`, and `peekaboo.db` first
 
-**Auto-setup creates a new API key each time the extension restarts**
-- Set `PEEKABOO_API_KEY` in your OpenClaw config to use a fixed key
-- Revoke unused keys in the GUI (Settings tab → API Keys → Revoke)
+**Server won't start**
+- Check if already running: `npx peekaboo status`
+- Stop it first: `npx peekaboo stop`, then start again
 
 **Port already in use**
 - Edit `hub-config.yaml` and change `port: 3000` to a different port
-- Update `PEEKABOO_HUB_URL` in your OpenClaw config to match
+- Update `~/.peekaboo/credentials.json` to match the new URL
