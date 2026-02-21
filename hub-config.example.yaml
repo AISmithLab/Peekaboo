@@ -1,0 +1,54 @@
+sources:
+  gmail:
+    enabled: true
+
+    owner_auth:
+      type: oauth2
+      clientId: "${GMAIL_CLIENT_ID}"
+      clientSecret: "${GMAIL_CLIENT_SECRET}"
+
+    agent_identity:
+      type: delegated_account
+      email: "my-ai-agent@gmail.com"
+      permissions:
+        - "send_as:myemail@gmail.com"
+
+    boundary:
+      after: "2026-01-01"
+      # labels: ["inbox", "important"]
+      # exclude_labels: ["spam", "trash"]
+
+    # cache:
+    #   enabled: true
+    #   sync_interval: "30m"
+    #   ttl: "7d"
+    #   encrypt: true
+
+  github:
+    enabled: true
+
+    owner_auth:
+      type: personal_access_token
+      token: "${GITHUB_PAT}"
+
+    agent_identity:
+      type: fine_grained_pat
+      github_username: "my-ai-agent"
+      repos:
+        - repo: "myorg/frontend"
+          permissions: ["issues:read", "issues:write", "pull_requests:read", "contents:read"]
+        - repo: "myorg/api-server"
+          permissions: ["issues:read", "pull_requests:read", "contents:read"]
+
+    boundary:
+      repos:
+        - "myorg/frontend"
+        - "myorg/api-server"
+      types: ["issue", "pr", "commit"]
+
+    # cache:
+    #   enabled: true
+    #   sync_interval: "15m"
+    #   ttl: "3d"
+
+port: 3000
