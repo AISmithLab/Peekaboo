@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import { createAppApi } from './app-api.js';
+import { createGuiRoutes } from '../gui/routes.js';
 
 interface ServerDeps {
   db: Database.Database;
@@ -21,6 +22,10 @@ export function createServer(deps: ServerDeps): Hono {
   // Mount App API
   const appApi = createAppApi(deps);
   app.route('/app/v1', appApi);
+
+  // Mount GUI routes
+  const guiRoutes = createGuiRoutes(deps);
+  app.route('/', guiRoutes);
 
   return app;
 }
