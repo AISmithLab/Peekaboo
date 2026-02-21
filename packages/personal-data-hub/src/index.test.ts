@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import plugin from './index.js';
 
 describe('PersonalDataHub Plugin', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('has correct plugin metadata', () => {
     expect(plugin.id).toBe('personal-data-hub');
     expect(plugin.name).toBe('Personal Data Hub');
@@ -35,7 +39,7 @@ describe('PersonalDataHub Plugin', () => {
     expect(result.success).toBe(false);
   });
 
-  it('registers tools when config is valid', () => {
+  it('registers tools when config is valid', async () => {
     const registerTool = vi.fn();
     const on = vi.fn();
     const api = {
@@ -48,7 +52,7 @@ describe('PersonalDataHub Plugin', () => {
       on,
     };
 
-    plugin.register(api);
+    await plugin.register(api);
 
     expect(registerTool).toHaveBeenCalledTimes(2);
 
@@ -64,24 +68,6 @@ describe('PersonalDataHub Plugin', () => {
     expect(on).toHaveBeenCalledWith('before_agent_start', expect.any(Function));
   });
 
-  it('warns and skips registration when config is missing', () => {
-    const registerTool = vi.fn();
-    const on = vi.fn();
-    const api = {
-      pluginConfig: undefined,
-      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      registerTool,
-      on,
-    };
-
-    plugin.register(api);
-
-    expect(registerTool).not.toHaveBeenCalled();
-    expect(api.logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Missing hubUrl or apiKey'),
-    );
-  });
-
   it('before_agent_start hook returns system prompt', async () => {
     const on = vi.fn();
     const api = {
@@ -94,7 +80,7 @@ describe('PersonalDataHub Plugin', () => {
       on,
     };
 
-    plugin.register(api);
+    await plugin.register(api);
 
     // Get the registered hook handler
     const hookCall = on.mock.calls.find((c: unknown[]) => c[0] === 'before_agent_start');
@@ -105,5 +91,122 @@ describe('PersonalDataHub Plugin', () => {
     expect(result.systemPromptAppend).toContain('Peekaboo');
     expect(result.systemPromptAppend).toContain('personal_data_pull');
     expect(result.systemPromptAppend).toContain('personal_data_propose');
+  });
+
+  describe('auto-setup', () => {
+    it('auto-discovers hub and creates API key when config is empty', async () => {
+      const registerTool = vi.fn();
+      const on = vi.fn();
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      // discoverHub probes localhost:3000 — succeeds
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, version: '0.1.0' }),
+        })
+        // checkHub called again during auto-setup
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, version: '0.1.0' }),
+        })
+        // createApiKey
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, id: 'openclaw-agent', key: 'pk_auto123' }),
+        });
+
+      const api = {
+        pluginConfig: undefined,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        registerTool,
+        on,
+      };
+
+      await plugin.register(api);
+
+      expect(registerTool).toHaveBeenCalledTimes(2);
+      expect(api.logger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Auto-created API key'),
+      );
+    });
+
+    it('falls back to warning when no hub is running', async () => {
+      const registerTool = vi.fn();
+      const on = vi.fn();
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      // All discovery attempts fail
+      mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const api = {
+        pluginConfig: undefined,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        registerTool,
+        on,
+      };
+
+      await plugin.register(api);
+
+      expect(registerTool).not.toHaveBeenCalled();
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('npx peekaboo init'),
+      );
+    });
+
+    it('creates API key when hubUrl provided but apiKey missing', async () => {
+      const registerTool = vi.fn();
+      const on = vi.fn();
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      // checkHub
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ok: true }),
+        })
+        // createApiKey
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, id: 'openclaw', key: 'pk_new456' }),
+        });
+
+      const api = {
+        pluginConfig: { hubUrl: 'http://localhost:3000' },
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        registerTool,
+        on,
+      };
+
+      await plugin.register(api);
+
+      expect(registerTool).toHaveBeenCalledTimes(2);
+    });
+
+    it('warns with missing config when no config is passed (legacy behavior)', async () => {
+      // Stub fetch so discoverHub fails
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+      mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const registerTool = vi.fn();
+      const on = vi.fn();
+      const api = {
+        pluginConfig: undefined,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        registerTool,
+        on,
+      };
+
+      await plugin.register(api);
+
+      expect(registerTool).not.toHaveBeenCalled();
+      expect(api.logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Missing hubUrl or apiKey'),
+      );
+    });
   });
 });

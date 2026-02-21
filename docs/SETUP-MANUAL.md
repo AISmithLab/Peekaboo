@@ -1,6 +1,6 @@
-# Setup Guide
+# Manual Setup
 
-How to install and run Peekaboo in a new environment.
+How to install and run Peekaboo in a new environment, step by step.
 
 ## Prerequisites
 

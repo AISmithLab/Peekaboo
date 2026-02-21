@@ -6,6 +6,10 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./setup": "./dist/setup.js"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run"
