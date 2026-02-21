@@ -229,9 +229,7 @@ if (isDirectRun) {
       console.log(`  hub-config.yaml created  ${result.configPath}`);
       console.log(`  Database created         ${result.dbPath}`);
       console.log(`  Credentials saved        ${result.credentialsPath}`);
-      console.log(`\n  API Key (used by agents to call the hub):`);
-      console.log(`    ${result.apiKey}\n`);
-      console.log('  Next steps:');
+      console.log('\n  Next steps:');
       console.log('    1. Start the server:  npx peekaboo start');
       console.log('    2. Open the GUI:      http://localhost:3000');
       console.log('    3. Connect sources and configure access policies\n');

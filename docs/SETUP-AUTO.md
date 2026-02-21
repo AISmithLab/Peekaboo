@@ -130,7 +130,7 @@ The init command creates:
 | `peekaboo.db` | SQLite database with all tables initialized (api_keys, manifests, cached_data, staging, audit_log) |
 | `~/.peekaboo/credentials.json` | Credentials (`hubUrl`, `apiKey`, `hubDir`) — auto-read by agents at startup |
 
-It also creates one API key and prints it to the console.
+It also creates an API key and saves it to the credentials file. You can manage API keys in the GUI.
 
 ## Publishing to ClawHub
 
