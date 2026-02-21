@@ -1,7 +1,7 @@
 {
   "name": "peekaboo",
   "version": "0.1.0",
-  "description": "Privacy-first personal data gateway for AI agents",
+  "description": "Centralized access control layer for personal data",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -16,8 +16,6 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@preact/preset-vite": "^2.10.3",
-    "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.0",
     "better-sqlite3": "^12.6.2",
@@ -32,7 +30,6 @@
     "googleapis": "^171.4.0",
     "hono": "^4.12.1",
     "octokit": "^5.0.5",
-    "preact": "^10.28.4",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },

@@ -10,7 +10,7 @@ import type { ConnectorRegistry } from './connectors/types.js';
 const configPath = process.argv[2] ?? resolve('hub-config.yaml');
 
 if (!existsSync(configPath)) {
-  console.log('Peekaboo v0.1.0 — Privacy-first personal data gateway');
+  console.log('Peekaboo v0.1.0');
   console.log(`\nNo config file found at: ${configPath}`);
   console.log('Copy hub-config.example.yaml to hub-config.yaml and configure your sources.');
   process.exit(1);
