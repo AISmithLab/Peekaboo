@@ -10,7 +10,8 @@
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, unlinkSync, mkdirSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
@@ -205,7 +206,16 @@ export function getServerPid(): number | null {
 }
 
 // --- CLI runner (only executes when this file is the entry point) ---
-const isDirectRun = process.argv[1]?.endsWith('cli.js') || process.argv[1]?.endsWith('cli.ts');
+// Resolve symlinks so this works with npx (which symlinks node_modules/.bin/peekaboo → dist/cli.js)
+const isDirectRun = (() => {
+  try {
+    const self = fileURLToPath(import.meta.url);
+    const invoked = realpathSync(process.argv[1]);
+    return invoked === self;
+  } catch {
+    return false;
+  }
+})();
 
 if (isDirectRun) {
   const command = process.argv[2];
