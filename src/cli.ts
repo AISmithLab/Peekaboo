@@ -83,30 +83,33 @@ export function init(targetDir?: string, options?: InitOptions): InitResult {
   return { secret, apiKey: rawKey, dbPath, configPath, envPath };
 }
 
-// --- CLI runner ---
-const command = process.argv[2];
+// --- CLI runner (only executes when this file is the entry point) ---
+const isDirectRun = process.argv[1]?.endsWith('cli.js') || process.argv[1]?.endsWith('cli.ts');
 
-if (command === 'init') {
-  const appName = process.argv[3] ?? 'default';
-  try {
-    const result = init(undefined, { appName });
-    console.log('\n  Peekaboo initialized successfully!\n');
-    console.log(`  .env created            ${result.envPath}`);
-    console.log(`  hub-config.yaml created  ${result.configPath}`);
-    console.log(`  Database created         ${result.dbPath}`);
-    console.log(`\n  API Key (save this — shown only once):`);
-    console.log(`    ${result.apiKey}\n`);
-    console.log('  Next steps:');
-    console.log('    1. Start the server:  node dist/index.js');
-    console.log('    2. Open the GUI:      http://localhost:3000');
-    console.log('    3. Connect sources and configure access policies\n');
-  } catch (err) {
-    console.error(`Error: ${(err as Error).message}`);
-    process.exit(1);
+if (isDirectRun) {
+  const command = process.argv[2];
+
+  if (command === 'init') {
+    const appName = process.argv[3] ?? 'default';
+    try {
+      const result = init(undefined, { appName });
+      console.log('\n  Peekaboo initialized successfully!\n');
+      console.log(`  .env created            ${result.envPath}`);
+      console.log(`  hub-config.yaml created  ${result.configPath}`);
+      console.log(`  Database created         ${result.dbPath}`);
+      console.log(`\n  API Key (save this — shown only once):`);
+      console.log(`    ${result.apiKey}\n`);
+      console.log('  Next steps:');
+      console.log('    1. Start the server:  node dist/index.js');
+      console.log('    2. Open the GUI:      http://localhost:3000');
+      console.log('    3. Connect sources and configure access policies\n');
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  } else {
+    console.log('Peekaboo CLI v0.1.0');
+    console.log('\nUsage:');
+    console.log('  npx peekaboo init [app-name]   Bootstrap a new Peekaboo installation');
   }
-} else if (command !== undefined) {
-  console.error(`Unknown command: ${command}`);
-  console.log('\nUsage:');
-  console.log('  npx peekaboo init [app-name]   Bootstrap a new Peekaboo installation');
-  process.exit(1);
 }

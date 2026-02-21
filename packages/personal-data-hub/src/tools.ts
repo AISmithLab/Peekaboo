@@ -78,8 +78,8 @@ export function createPullTool(client: HubClient) {
     name: 'personal_data_pull',
     label: 'Pull Personal Data',
     description:
-      'Pull personal data from a source through the Peekaboo privacy gateway. ' +
-      'Data is filtered, redacted, and shaped according to the owner\'s privacy policy. ' +
+      'Pull personal data from a source through the Peekaboo access control gateway. ' +
+      'Data is filtered, redacted, and shaped according to the owner\'s access control policy. ' +
       'Always provide a clear purpose explaining why the data is needed.',
     parameters: PULL_TOOL_SCHEMA,
     async execute(_toolCallId: string, args: Record<string, unknown>) {
@@ -120,7 +120,7 @@ export function createProposeTool(client: HubClient) {
     name: 'personal_data_propose',
     label: 'Propose Personal Data Action',
     description:
-      'Propose an outbound action (e.g., draft email, send email) through the Peekaboo privacy gateway. ' +
+      'Propose an outbound action (e.g., draft email, send email) through the Peekaboo access control gateway. ' +
       'The action is staged for owner review — it will NOT execute until the owner approves it in the Peekaboo GUI. ' +
       'Always provide a clear purpose explaining why this action is being proposed.',
     parameters: PROPOSE_TOOL_SCHEMA,

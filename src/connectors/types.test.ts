@@ -1,14 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import {
-  serializeDataRow,
-  deserializeDataRow,
-  type DataRow,
-  type SourceConnector,
-  type ActionResult,
+import type {
+  DataRow,
+  SourceConnector,
+  ActionResult,
 } from './types.js';
 
 describe('DataRow and Connector Types', () => {
-  it('Gmail DataRow type-checks and serializes correctly', () => {
+  it('Gmail DataRow type-checks correctly', () => {
     const row: DataRow = {
       source: 'gmail',
       source_item_id: 'msg_abc123',
@@ -29,14 +27,11 @@ describe('DataRow and Connector Types', () => {
       },
     };
 
-    const json = serializeDataRow(row);
-    expect(typeof json).toBe('string');
-    const parsed = JSON.parse(json);
-    expect(parsed.source).toBe('gmail');
-    expect(parsed.data.title).toBe('Q4 Report Draft');
+    expect(row.source).toBe('gmail');
+    expect(row.data.title).toBe('Q4 Report Draft');
   });
 
-  it('GitHub DataRow type-checks and serializes correctly', () => {
+  it('GitHub DataRow type-checks correctly', () => {
     const row: DataRow = {
       source: 'github',
       source_item_id: 'myorg/frontend#123',
@@ -55,30 +50,9 @@ describe('DataRow and Connector Types', () => {
       },
     };
 
-    const json = serializeDataRow(row);
-    const parsed = JSON.parse(json);
-    expect(parsed.source).toBe('github');
-    expect(parsed.data.repo).toBe('myorg/frontend');
-    expect(parsed.data.number).toBe(123);
-  });
-
-  it('serializeDataRow → deserializeDataRow round-trips correctly', () => {
-    const original: DataRow = {
-      source: 'gmail',
-      source_item_id: 'msg_1',
-      type: 'email',
-      timestamp: '2026-01-15T08:30:00Z',
-      data: {
-        title: 'Test Email',
-        body: 'Hello world',
-        labels: ['inbox'],
-      },
-    };
-
-    const serialized = serializeDataRow(original);
-    const deserialized = deserializeDataRow(serialized);
-
-    expect(deserialized).toEqual(original);
+    expect(row.source).toBe('github');
+    expect(row.data.repo).toBe('myorg/frontend');
+    expect(row.data.number).toBe(123);
   });
 
   it('data map can hold any shape — nested objects, arrays, strings, numbers', () => {
@@ -99,13 +73,11 @@ describe('DataRow and Connector Types', () => {
       },
     };
 
-    const json = serializeDataRow(row);
-    const restored = deserializeDataRow(json);
-    expect(restored.data.stringField).toBe('hello');
-    expect(restored.data.numberField).toBe(42);
-    expect(restored.data.boolField).toBe(true);
-    expect(restored.data.arrayField).toEqual([1, 'two', { three: 3 }]);
-    expect((restored.data.nestedObject as Record<string, unknown>)).toEqual({ a: { b: { c: 'deep' } } });
+    expect(row.data.stringField).toBe('hello');
+    expect(row.data.numberField).toBe(42);
+    expect(row.data.boolField).toBe(true);
+    expect(row.data.arrayField).toEqual([1, 'two', { three: 3 }]);
+    expect(row.data.nestedObject).toEqual({ a: { b: { c: 'deep' } } });
   });
 
   it('mock connector implementing SourceConnector compiles without errors', () => {
@@ -128,7 +100,6 @@ describe('DataRow and Connector Types', () => {
     };
 
     expect(mockConnector.name).toBe('mock');
-    // Verify it's callable
     expect(typeof mockConnector.fetch).toBe('function');
     expect(typeof mockConnector.executeAction).toBe('function');
   });

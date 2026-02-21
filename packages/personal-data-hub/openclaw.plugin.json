@@ -1,7 +1,7 @@
 {
   "id": "personal-data-hub",
   "name": "Personal Data Hub",
-  "description": "Unified interface to personal data through Peekaboo privacy gateway",
+  "description": "Unified interface to personal data through Peekaboo access control gateway",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

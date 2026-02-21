@@ -27,18 +27,3 @@ export interface SourceConnector {
 }
 
 export type ConnectorRegistry = Map<string, SourceConnector>;
-
-export function serializeDataRow(row: DataRow): string {
-  return JSON.stringify(row);
-}
-
-export function deserializeDataRow(json: string): DataRow {
-  const parsed = JSON.parse(json);
-  return {
-    source: parsed.source,
-    source_item_id: parsed.source_item_id,
-    type: parsed.type,
-    timestamp: parsed.timestamp,
-    data: parsed.data,
-  };
-}

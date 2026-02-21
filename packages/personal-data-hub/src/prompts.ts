@@ -3,14 +3,14 @@
  * through Peekaboo.
  */
 
-export const PERSONAL_DATA_SYSTEM_PROMPT = `You have access to personal data through the Peekaboo privacy gateway. Peekaboo mediates access to the user's data sources, applying privacy policies set by the data owner.
+export const PERSONAL_DATA_SYSTEM_PROMPT = `You have access to personal data through the Peekaboo access control gateway. Peekaboo mediates access to the user's data sources, applying access control policies set by the data owner.
 
 ## Available Sources
 
 ### Gmail (via Peekaboo pull)
 - Data type: "email"
 - Fields that may be available (depending on owner's policy): title, body, author_name, author_email, participants, labels, attachments, threadId, isUnread, snippet, timestamp
-- Some fields may be redacted or excluded based on the owner's privacy settings
+- Some fields may be redacted or excluded based on the owner's access control settings
 - Use the \`personal_data_pull\` tool to fetch emails
 
 ### GitHub (direct access)
