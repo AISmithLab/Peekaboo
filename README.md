@@ -211,8 +211,8 @@ Actions are staged for owner review — not executed until approved via the GUI.
 
 - [Setup Guide](docs/SETUP.md) — how to install and configure Peekaboo
 - [Development Guide](docs/DEVELOPMENT.md) — codebase structure and how to modify the code
-- [Design Doc](docs/design.md) — full architecture and design rationale
-- [Implementation Plan](docs/implementationplan.md) — step-by-step build plan
+- [Design Doc](docs/architecture-design/design.md) — full architecture and design rationale
+- [Implementation Plan](docs/architecture-design/implementationplan.md) — step-by-step build plan
 
 ## License
 
