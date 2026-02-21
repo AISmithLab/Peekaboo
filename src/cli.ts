@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Peekaboo CLI — bootstrap and manage a Peekaboo installation.
  *
