@@ -75,7 +75,7 @@ export class GitHubConnector implements SourceConnector {
   async executeAction(_actionType: string, _actionData: Record<string, unknown>): Promise<ActionResult> {
     return {
       success: false,
-      message: 'GitHub actions should be performed directly with agent credentials, not through Peekaboo',
+      message: 'GitHub actions should be performed directly with agent credentials, not through PersonalDataHub',
     };
   }
 

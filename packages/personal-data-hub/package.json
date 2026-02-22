@@ -2,7 +2,7 @@
   "name": "@openclaw/personal-data-hub",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenClaw skill for interacting with Peekaboo personal data hub",
+  "description": "OpenClaw skill for interacting with PersonalDataHub",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

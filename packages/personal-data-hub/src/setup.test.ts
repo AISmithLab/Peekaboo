@@ -138,7 +138,7 @@ describe('Setup Module', () => {
     });
 
     it('exports CREDENTIALS_PATH', () => {
-      expect(CREDENTIALS_PATH).toContain('.peekaboo');
+      expect(CREDENTIALS_PATH).toContain('.pdh');
       expect(CREDENTIALS_PATH).toContain('credentials.json');
     });
   });

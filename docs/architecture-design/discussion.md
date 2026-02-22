@@ -1,4 +1,4 @@
-# Peekaboo Design Discussions
+# PersonalDataHub Design Discussions
 
 ## Session 1: Initial Design & Implementation Plan Review
 
@@ -63,7 +63,7 @@
 - Gmail-focused tests matching the preset manifests
 
 ### Step 14 — PersonalDataHub OpenClaw Extension
-- User said "Need to create an OpenClaw extension named PersonalDataHub. The PersonalDataHub will intelligently interact with the Peekaboo hub. For example, I can send a query like: Collect all my incoming and unanswered emails since this moment, draft a response to them. Then it will call the API in the personal data hub to query data and commit the stages."
+- User said "Need to create an OpenClaw extension named PersonalDataHub. The PersonalDataHub will intelligently interact with the PersonalDataHub. For example, I can send a query like: Collect all my incoming and unanswered emails since this moment, draft a response to them. Then it will call the API in the personal data hub to query data and commit the stages."
 - Extension sends requests with `purpose` string — doesn't know about manifests or policies
 - Two tools: `personal_data_pull` and `personal_data_propose`
 

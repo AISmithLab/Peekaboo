@@ -7,7 +7,7 @@ import { encryptField, decryptField } from './encryption.js';
 import type Database from 'better-sqlite3';
 
 function makeTmpDir(): string {
-  const dir = join(tmpdir(), `peekaboo-db-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `pdh-db-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

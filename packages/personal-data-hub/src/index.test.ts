@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-// Mock readCredentials so tests don't depend on real ~/.peekaboo/credentials.json
+// Mock readCredentials so tests don't depend on real ~/.pdh/credentials.json
 vi.mock('./setup.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
@@ -19,7 +19,7 @@ describe('PersonalDataHub Plugin', () => {
   it('has correct plugin metadata', () => {
     expect(plugin.id).toBe('personal-data-hub');
     expect(plugin.name).toBe('Personal Data Hub');
-    expect(plugin.description).toContain('Peekaboo');
+    expect(plugin.description).toContain('PersonalDataHub');
   });
 
   it('config schema validates correct config', () => {
@@ -98,7 +98,7 @@ describe('PersonalDataHub Plugin', () => {
 
     const handler = hookCall![1] as (event: unknown) => Promise<{ systemPromptAppend: string }>;
     const result = await handler({});
-    expect(result.systemPromptAppend).toContain('Peekaboo');
+    expect(result.systemPromptAppend).toContain('PersonalDataHub');
     expect(result.systemPromptAppend).toContain('personal_data_pull');
     expect(result.systemPromptAppend).toContain('personal_data_propose');
   });
@@ -162,7 +162,7 @@ describe('PersonalDataHub Plugin', () => {
 
       expect(registerTool).not.toHaveBeenCalled();
       expect(api.logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('npx peekaboo init'),
+        expect.stringContaining('npx pdh init'),
       );
     });
 
@@ -222,8 +222,8 @@ describe('PersonalDataHub Plugin', () => {
     });
 
     it('uses environment variables when pluginConfig is missing (ClawHub pattern)', async () => {
-      process.env.PEEKABOO_HUB_URL = 'http://localhost:9999';
-      process.env.PEEKABOO_API_KEY = 'pk_env_test_key';
+      process.env.PDH_HUB_URL = 'http://localhost:9999';
+      process.env.PDH_API_KEY = 'pk_env_test_key';
 
       const registerTool = vi.fn();
       const on = vi.fn();
@@ -241,8 +241,8 @@ describe('PersonalDataHub Plugin', () => {
         expect.stringContaining('Configured from environment variables'),
       );
 
-      delete process.env.PEEKABOO_HUB_URL;
-      delete process.env.PEEKABOO_API_KEY;
+      delete process.env.PDH_HUB_URL;
+      delete process.env.PDH_API_KEY;
     });
 
     it('warns with missing config when no config is passed (legacy behavior)', async () => {

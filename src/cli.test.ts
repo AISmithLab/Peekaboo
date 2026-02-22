@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import { init, reset, writeCredentials, readCredentials, CREDENTIALS_PATH, CREDENTIALS_DIR } from './cli.js';
 
 function makeTmpDir(): string {
-  const dir = join(tmpdir(), `peekaboo-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `pdh-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -23,10 +23,10 @@ describe('CLI init', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates .env with PEEKABOO_SECRET', async () => {
+  it('creates .env with PDH_SECRET', async () => {
     const result = await init(tmpDir);
     const envContent = readFileSync(join(tmpDir, '.env'), 'utf-8');
-    expect(envContent).toContain('PEEKABOO_SECRET=');
+    expect(envContent).toContain('PDH_SECRET=');
     expect(envContent).toContain(result.secret);
   });
 
@@ -38,9 +38,9 @@ describe('CLI init', () => {
 
   it('creates and initializes SQLite database with all tables', async () => {
     await init(tmpDir);
-    expect(existsSync(join(tmpDir, 'peekaboo.db'))).toBe(true);
+    expect(existsSync(join(tmpDir, 'pdh.db'))).toBe(true);
 
-    const db = new Database(join(tmpDir, 'peekaboo.db'));
+    const db = new Database(join(tmpDir, 'pdh.db'));
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
     const names = tables.map(t => t.name);
     expect(names).toContain('api_keys');
@@ -58,7 +58,7 @@ describe('CLI init', () => {
 
   it('stores hashed API key that verifies against raw key', async () => {
     const result = await init(tmpDir);
-    const db = new Database(join(tmpDir, 'peekaboo.db'));
+    const db = new Database(join(tmpDir, 'pdh.db'));
     const row = db.prepare('SELECT * FROM api_keys').get() as { key_hash: string; name: string };
     expect(compareSync(result.apiKey, row.key_hash)).toBe(true);
     expect(row.name).toBe('default');
@@ -67,7 +67,7 @@ describe('CLI init', () => {
 
   it('uses custom app name for API key', async () => {
     await init(tmpDir, { appName: 'My Agent' });
-    const db = new Database(join(tmpDir, 'peekaboo.db'));
+    const db = new Database(join(tmpDir, 'pdh.db'));
     const row = db.prepare('SELECT * FROM api_keys').get() as { id: string; name: string };
     expect(row.id).toBe('my-agent');
     expect(row.name).toBe('My Agent');
@@ -85,7 +85,7 @@ describe('CLI init', () => {
     expect(decoded.length).toBe(32);
   });
 
-  it('writes credentials to ~/.peekaboo/credentials.json', async () => {
+  it('writes credentials to ~/.pdh/credentials.json', async () => {
     const result = await init(tmpDir);
     expect(existsSync(CREDENTIALS_PATH)).toBe(true);
     const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf-8'));
@@ -146,14 +146,14 @@ describe('CLI reset', () => {
     // All hub files should exist
     expect(existsSync(join(tmpDir, '.env'))).toBe(true);
     expect(existsSync(join(tmpDir, 'hub-config.yaml'))).toBe(true);
-    expect(existsSync(join(tmpDir, 'peekaboo.db'))).toBe(true);
+    expect(existsSync(join(tmpDir, 'pdh.db'))).toBe(true);
     expect(existsSync(CREDENTIALS_PATH)).toBe(true);
 
     const removed = reset(tmpDir);
     expect(removed.length).toBeGreaterThanOrEqual(4);
     expect(existsSync(join(tmpDir, '.env'))).toBe(false);
     expect(existsSync(join(tmpDir, 'hub-config.yaml'))).toBe(false);
-    expect(existsSync(join(tmpDir, 'peekaboo.db'))).toBe(false);
+    expect(existsSync(join(tmpDir, 'pdh.db'))).toBe(false);
     expect(existsSync(CREDENTIALS_PATH)).toBe(false);
   });
 

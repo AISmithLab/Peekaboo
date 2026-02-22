@@ -5,7 +5,7 @@ How the codebase is structured and how to modify it.
 ## Project Structure
 
 ```
-peekaboo/
+PersonalDataHub/
 ├── src/
 │   ├── index.ts                 # Entry point — loads config, creates DB, starts server
 │   ├── config/                  # Configuration system
@@ -53,7 +53,7 @@ peekaboo/
 │   └── personal-data-hub/       # OpenClaw skill
 │       └── src/
 │           ├── index.ts         # Plugin registration
-│           ├── hub-client.ts    # HTTP client for Peekaboo API
+│           ├── hub-client.ts    # HTTP client for PersonalDataHub API
 │           ├── tools.ts         # personal_data_pull, personal_data_propose tools
 │           └── prompts.ts       # System prompt for teaching agents
 ├── tests/
@@ -245,17 +245,17 @@ You can load synthetic email data to try the full pull pipeline without connecti
 
 ```bash
 # Load 15 synthetic emails and 3 demo manifests
-npx peekaboo demo-load
+npx pdh demo-load
 
 # Start the server, then pull using a demo manifest
-npx peekaboo start
+npx pdh start
 curl -X POST http://localhost:3000/app/v1/pull \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{"source": "gmail", "purpose": "Test demo pull"}'
 
 # Remove all demo data when done
-npx peekaboo demo-unload
+npx pdh demo-unload
 ```
 
 The three demo manifests:
@@ -284,7 +284,7 @@ npx vitest run src/operators/operators.test.ts
 
 ## OpenClaw Skill
 
-The skill in `packages/personal-data-hub/` is a standalone package with its own `tsconfig.json` and test suite. It wraps the two Peekaboo API endpoints as OpenClaw tools.
+The skill in `packages/personal-data-hub/` is a standalone package with its own `tsconfig.json` and test suite. It wraps the two PersonalDataHub API endpoints as OpenClaw tools.
 
 To work on it:
 
@@ -293,4 +293,4 @@ cd packages/personal-data-hub
 pnpm test
 ```
 
-The skill has no dependency on the main Peekaboo source — it only talks to the Hub over HTTP.
+The skill has no dependency on the main PersonalDataHub source — it only talks to the Hub over HTTP.

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Peekaboo CLI — bootstrap and manage a Peekaboo installation.
+ * PersonalDataHub CLI — bootstrap and manage a PersonalDataHub installation.
  *
  * Usage:
- *   npx peekaboo init [app-name]    Bootstrap a new installation
- *   npx peekaboo start              Start the server in the background
- *   npx peekaboo stop               Stop the background server
- *   npx peekaboo status             Check if the server is running
- *   npx peekaboo reset               Remove all generated files and start fresh
- *   npx peekaboo demo-load          Load synthetic demo emails and manifests
- *   npx peekaboo demo-unload        Remove all demo data
+ *   npx pdh init [app-name]    Bootstrap a new installation
+ *   npx pdh start              Start the server in the background
+ *   npx pdh stop               Stop the background server
+ *   npx pdh status             Check if the server is running
+ *   npx pdh reset              Remove all generated files and start fresh
+ *   npx pdh demo-load          Load synthetic demo emails and manifests
+ *   npx pdh demo-unload        Remove all demo data
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -24,7 +24,7 @@ import { loadDemoData, unloadDemoData } from './demo.js';
 
 // --- Credentials file path ---
 
-export const CREDENTIALS_DIR = join(homedir(), '.peekaboo');
+export const CREDENTIALS_DIR = join(homedir(), '.pdh');
 export const CREDENTIALS_PATH = join(CREDENTIALS_DIR, 'credentials.json');
 const PID_PATH = join(CREDENTIALS_DIR, 'server.pid');
 
@@ -35,7 +35,7 @@ export interface Credentials {
 }
 
 /**
- * Write credentials to ~/.peekaboo/credentials.json.
+ * Write credentials to ~/.pdh/credentials.json.
  * Creates the directory if it doesn't exist.
  */
 export function writeCredentials(creds: Credentials): void {
@@ -44,7 +44,7 @@ export function writeCredentials(creds: Credentials): void {
 }
 
 /**
- * Read credentials from ~/.peekaboo/credentials.json.
+ * Read credentials from ~/.pdh/credentials.json.
  * Returns null if the file doesn't exist or is malformed.
  */
 export function readCredentials(): Credentials | null {
@@ -94,17 +94,17 @@ export interface InitOptions {
 }
 
 /**
- * Bootstrap a new Peekaboo installation.
+ * Bootstrap a new PersonalDataHub installation.
  *
  * Generates a master secret, writes .env and hub-config.yaml,
  * initializes the database, creates the first API key,
- * and writes credentials to ~/.peekaboo/credentials.json.
+ * and writes credentials to ~/.pdh/credentials.json.
  */
 export async function init(targetDir?: string, options?: InitOptions): Promise<InitResult> {
   const dir = targetDir ?? process.cwd();
   const envPath = resolve(dir, '.env');
   const configPath = resolve(dir, 'hub-config.yaml');
-  const dbPath = resolve(dir, 'peekaboo.db');
+  const dbPath = resolve(dir, 'pdh.db');
 
   // Guard against re-initialization
   if (existsSync(envPath)) {
@@ -115,7 +115,7 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
   const secret = randomBytes(32).toString('base64');
 
   // Write .env
-  writeFileSync(envPath, `PEEKABOO_SECRET=${secret}\n`, 'utf-8');
+  writeFileSync(envPath, `PDH_SECRET=${secret}\n`, 'utf-8');
 
   // Fetch default OAuth credentials from S3
   const oauthCreds = await fetchDefaultCredentials();
@@ -127,7 +127,7 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
 
   if (oauthCreds) {
     const lines = [
-      '# Peekaboo configuration',
+      '# PersonalDataHub configuration',
       '',
       'sources:',
     ];
@@ -158,7 +158,7 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
     configContent = lines.join('\n');
   } else {
     configContent = [
-      '# Peekaboo configuration — add OAuth credentials here',
+      '# PersonalDataHub configuration — add OAuth credentials here',
       '# See docs/oauth-setup.md for setup instructions',
       '',
       'sources: {}',
@@ -194,8 +194,8 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
 // --- Start / Stop / Status ---
 
 /**
- * Start the Peekaboo server in the background.
- * Spawns a detached node process and writes the PID to ~/.peekaboo/server.pid.
+ * Start the PersonalDataHub server in the background.
+ * Spawns a detached node process and writes the PID to ~/.pdh/server.pid.
  */
 export function startBackground(hubDir?: string): { pid: number; hubDir: string } {
   const dir = hubDir ?? readCredentials()?.hubDir ?? process.cwd();
@@ -210,7 +210,7 @@ export function startBackground(hubDir?: string): { pid: number; hubDir: string 
   if (existing !== null) {
     try {
       process.kill(existing, 0); // Check if process exists
-      throw new Error(`Server is already running (PID ${existing}). Run 'npx peekaboo stop' first.`);
+      throw new Error(`Server is already running (PID ${existing}). Run 'npx pdh stop' first.`);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
       // Process doesn't exist, stale PID file — clean up
@@ -234,7 +234,7 @@ export function startBackground(hubDir?: string): { pid: number; hubDir: string 
 }
 
 /**
- * Stop the background Peekaboo server.
+ * Stop the background PersonalDataHub server.
  */
 export function stopBackground(): boolean {
   const pid = getServerPid();
@@ -267,11 +267,11 @@ export function getServerPid(): number | null {
 
 // --- Reset ---
 
-const HUB_FILES = ['.env', 'hub-config.yaml', 'peekaboo.db', 'peekaboo.db-wal', 'peekaboo.db-shm'];
+const HUB_FILES = ['.env', 'hub-config.yaml', 'pdh.db', 'pdh.db-wal', 'pdh.db-shm'];
 const CRED_FILES = [CREDENTIALS_PATH, PID_PATH];
 
 /**
- * Remove all generated Peekaboo files so `init` can run again cleanly.
+ * Remove all generated PersonalDataHub files so `init` can run again cleanly.
  * Stops the background server first if it's running.
  * Returns the list of files that were actually deleted.
  */
@@ -303,7 +303,7 @@ export function reset(hubDir?: string): string[] {
 }
 
 // --- CLI runner (only executes when this file is the entry point) ---
-// Resolve symlinks so this works with npx (which symlinks node_modules/.bin/peekaboo → dist/cli.js)
+// Resolve symlinks so this works with npx (which symlinks node_modules/.bin/pdh → dist/cli.js)
 const isDirectRun = (() => {
   try {
     const self = fileURLToPath(import.meta.url);
@@ -321,7 +321,7 @@ if (isDirectRun) {
     const appName = process.argv[3] ?? 'default';
     try {
       const result = await init(undefined, { appName });
-      console.log('\n  Peekaboo initialized successfully!\n');
+      console.log('\n  PersonalDataHub initialized successfully!\n');
       console.log(`  .env created            ${result.envPath}`);
       console.log(`  hub-config.yaml created  ${result.configPath}`);
       console.log(`  Database created         ${result.dbPath}`);
@@ -332,7 +332,7 @@ if (isDirectRun) {
       } else {
         console.log('    Add OAuth credentials to hub-config.yaml — see docs/oauth-setup.md');
       }
-      console.log('    Start the server:  npx peekaboo start');
+      console.log('    Start the server:  npx pdh start');
       console.log('    Open the GUI:      http://localhost:3000\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
@@ -341,27 +341,27 @@ if (isDirectRun) {
   } else if (command === 'start') {
     try {
       const result = startBackground();
-      console.log(`\n  Peekaboo server started in background (PID ${result.pid})`);
+      console.log(`\n  PersonalDataHub server started in background (PID ${result.pid})`);
       console.log(`  Hub directory: ${result.hubDir}`);
       console.log(`  GUI: http://localhost:3000`);
       console.log('\n  Note: The server does not auto-start on reboot.');
-      console.log('  Run `npx peekaboo start` again after restarting your machine.\n');
+      console.log('  Run `npx pdh start` again after restarting your machine.\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
     }
   } else if (command === 'stop') {
     if (stopBackground()) {
-      console.log('\n  Peekaboo server stopped.\n');
+      console.log('\n  PersonalDataHub server stopped.\n');
     } else {
-      console.log('\n  No running Peekaboo server found.\n');
+      console.log('\n  No running PersonalDataHub server found.\n');
     }
   } else if (command === 'status') {
     const pid = getServerPid();
     if (pid !== null) {
-      console.log(`\n  Peekaboo server is running (PID ${pid})\n`);
+      console.log(`\n  PersonalDataHub server is running (PID ${pid})\n`);
     } else {
-      console.log('\n  Peekaboo server is not running.\n');
+      console.log('\n  PersonalDataHub server is not running.\n');
     }
   } else if (command === 'reset') {
     try {
@@ -369,11 +369,11 @@ if (isDirectRun) {
       if (removed.length === 0) {
         console.log('\n  Nothing to remove — already clean.\n');
       } else {
-        console.log('\n  Peekaboo reset complete. Removed:\n');
+        console.log('\n  PersonalDataHub reset complete. Removed:\n');
         for (const f of removed) {
           console.log(`    ${f}`);
         }
-        console.log('\n  Run `npx peekaboo init` to start fresh.\n');
+        console.log('\n  Run `npx pdh init` to start fresh.\n');
       }
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
@@ -382,12 +382,12 @@ if (isDirectRun) {
   } else if (command === 'demo-load') {
     try {
       const creds = readCredentials();
-      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'peekaboo.db'))
+      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'pdh.db'))
         ? creds.hubDir
         : process.cwd();
-      const dbPath = resolve(hubDir, 'peekaboo.db');
+      const dbPath = resolve(hubDir, 'pdh.db');
       if (!existsSync(dbPath)) {
-        throw new Error(`No peekaboo.db found at ${dbPath}. Run 'npx peekaboo init' first.`);
+        throw new Error(`No pdh.db found at ${dbPath}. Run 'npx pdh init' first.`);
       }
       const db = getDb(dbPath);
       const result = loadDemoData(db);
@@ -399,7 +399,7 @@ if (isDirectRun) {
       console.log('    demo-gmail-readonly  — pull + select (title, body, labels, author_name)');
       console.log('    demo-gmail-metadata  — pull + select (title, labels, author_name only)');
       console.log('    demo-gmail-redacted  — pull + select + redact SSNs');
-      console.log('\n  Try: npx peekaboo start, then POST /app/v1/pull with a demo manifest.\n');
+      console.log('\n  Try: npx pdh start, then POST /app/v1/pull with a demo manifest.\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
@@ -407,12 +407,12 @@ if (isDirectRun) {
   } else if (command === 'demo-unload') {
     try {
       const creds = readCredentials();
-      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'peekaboo.db'))
+      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'pdh.db'))
         ? creds.hubDir
         : process.cwd();
-      const dbPath = resolve(hubDir, 'peekaboo.db');
+      const dbPath = resolve(hubDir, 'pdh.db');
       if (!existsSync(dbPath)) {
-        throw new Error(`No peekaboo.db found at ${dbPath}. Run 'npx peekaboo init' first.`);
+        throw new Error(`No pdh.db found at ${dbPath}. Run 'npx pdh init' first.`);
       }
       const db = getDb(dbPath);
       const result = unloadDemoData(db);
@@ -425,14 +425,14 @@ if (isDirectRun) {
       process.exit(1);
     }
   } else {
-    console.log('Peekaboo CLI v0.1.0');
+    console.log('PersonalDataHub CLI v0.1.0');
     console.log('\nUsage:');
-    console.log('  npx peekaboo init [app-name]   Bootstrap a new Peekaboo installation');
-    console.log('  npx peekaboo start             Start the server in the background');
-    console.log('  npx peekaboo stop              Stop the background server');
-    console.log('  npx peekaboo status            Check if the server is running');
-    console.log('  npx peekaboo reset             Remove all generated files and start fresh');
-    console.log('  npx peekaboo demo-load         Load synthetic demo emails and manifests');
-    console.log('  npx peekaboo demo-unload       Remove all demo data');
+    console.log('  npx pdh init [app-name]   Bootstrap a new PersonalDataHub installation');
+    console.log('  npx pdh start             Start the server in the background');
+    console.log('  npx pdh stop              Stop the background server');
+    console.log('  npx pdh status            Check if the server is running');
+    console.log('  npx pdh reset             Remove all generated files and start fresh');
+    console.log('  npx pdh demo-load         Load synthetic demo emails and manifests');
+    console.log('  npx pdh demo-unload       Remove all demo data');
   }
 }

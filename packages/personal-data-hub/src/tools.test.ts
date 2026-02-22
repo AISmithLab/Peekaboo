@@ -24,7 +24,7 @@ describe('Tools', () => {
       const tool = createPullTool(client);
       expect(tool.name).toBe('personal_data_pull');
       expect(tool.label).toBe('Pull Personal Data');
-      expect(tool.description).toContain('Peekaboo');
+      expect(tool.description).toContain('PersonalDataHub');
       expect(tool.parameters.required).toContain('source');
       expect(tool.parameters.required).toContain('purpose');
     });

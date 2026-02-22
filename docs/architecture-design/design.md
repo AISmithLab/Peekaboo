@@ -1,8 +1,8 @@
-# Peekaboo: Whitelist Access to Personal Data through a Local Data Hub
+# PersonalDataHub: Whitelist Access to Personal Data through a Local Data Hub
 
 ## Overview
 
-Peekaboo is a **privacy-first personal data gateway** that sits between source services (Gmail, GitHub, Calendar, etc.) and AI agents (OpenClaw). The core concept: **whitelist access to personal data**. The agent sees nothing by default — you explicitly whitelist which data it can peek at, which repos it can touch, and which actions it can take.
+PersonalDataHub is a **privacy-first personal data gateway** that sits between source services (Gmail, GitHub, Calendar, etc.) and AI agents (OpenClaw). The core concept: **whitelist access to personal data**. The agent sees nothing by default — you explicitly whitelist which data it can peek at, which repos it can touch, and which actions it can take.
 
 The Hub is an **intermediary controller** — not a simple proxy, but an active mediator that retrieves data from source services, processes it through operator pipelines locally, and serves filtered results to apps. By default, the Hub fetches data **on-the-fly** and does not store personal data locally. The user can optionally enable **local caching** per source for offline access or performance. When caching is enabled, all data is **encrypted at rest**.
 
@@ -10,7 +10,7 @@ Core principles:
 - **Whitelist, not blacklist**: the agent has zero access by default. Every piece of data, every repo, every action must be explicitly allowed.
 - **On-the-fly by default**: the Hub fetches data from source APIs on demand. Personal data passes through the pipeline and is returned — not written to disk unless the user explicitly enables caching.
 - Outbound control is per-source: some sources require staging (e.g., Gmail — owner reviews before send), while others let the agent act directly through its own scoped credentials (e.g., GitHub — the agent comments/creates issues with its own account)
-- The agent operates under a separate, scoped identity — even bypassing Peekaboo, the credentials limit what it can do
+- The agent operates under a separate, scoped identity — even bypassing PersonalDataHub, the credentials limit what it can do
 - Apps never touch raw data — only transformed output from operator pipelines
 - Every data movement is auditable
 - Keep the code simple and modular so the public can quickly validate its behavior
@@ -25,7 +25,7 @@ Source Services (Gmail, GitHub, etc.)
         │ fetch (on-the-fly or from local cache)
         │
 ┌───────┼────────────────────────────────────────────────┐
-│       │          Peekaboo                        │
+│       │       PersonalDataHub                     │
 │       │    (INTERMEDIARY CONTROLLER)                   │
 │       │                                                │
 │  ┌────┴────────────────────────────────┐               │
@@ -76,7 +76,7 @@ Source Services              │         OpenClaw Agent
         ↕ (full access)      │              │ agent credentials
         ↕                   │              │
       ┌──────────────────────────────────────────┐
-      │            Peekaboo               │
+      │         PersonalDataHub            │
       │                                          │
       │  ┌───────────┐    ┌──────────────────┐   │
       │  │  Source    │    │  Operator        │───│──→ App API (read-only)
@@ -138,7 +138,7 @@ The agent credentials are the **last line of defense**. The Hub API is the prefe
 
 Based on the MPF design pattern (Haojian Jin's Ph.D. dissertation). Instead of all-or-nothing binary permissions, the GUI generates manifests with operator pipelines from the owner's access control settings. The Hub executes those pipelines as a trusted runtime.
 
-| MPF Concept | Peekaboo Implementation |
+| MPF Concept | PersonalDataHub Implementation |
 |---|---|
 | **Manifest** | GUI generates manifests from owner's access control settings. Human-readable, machine-analyzable. |
 | **Operators** | Hub ships a fixed set of verb-based abstractions: pull, select, filter, transform, stage, store (V1), plus future operators like extract, aggregate, groupby, join. Each configured by properties. |
@@ -151,7 +151,7 @@ Based on the MPF design pattern (Haojian Jin's Ph.D. dissertation). Instead of a
 
 ## Data Model
 
-By default, Peekaboo does **not store personal data locally**. When an app queries via the API, the Hub resolves the appropriate manifest, the `pull` operator fetches data live from the source API, the pipeline transforms it on-the-fly, and the result is returned directly.
+By default, PersonalDataHub does **not store personal data locally**. When an app queries via the API, the Hub resolves the appropriate manifest, the `pull` operator fetches data live from the source API, the pipeline transforms it on-the-fly, and the result is returned directly.
 
 The user can optionally **enable local caching** per source. When caching is enabled, the Hub stores fetched data in an encrypted local database, and `pull` reads from the cache instead of hitting the source API each time. This is useful for offline access, reducing API latency, or scheduled background sync. All cached data is **encrypted at rest**.
 
@@ -330,7 +330,7 @@ stage_it: stage { action_type: "send_email", requires_approval: true }
 
 ### App API Surface
 
-A single API surface (`/app/v1/`) for external apps like OpenClaw. The owner interacts with Peekaboo directly through the GUI (no separate Owner API needed).
+A single API surface (`/app/v1/`) for external apps like OpenClaw. The owner interacts with PersonalDataHub directly through the GUI (no separate Owner API needed).
 
 ### Response Envelope
 
@@ -463,7 +463,7 @@ Every data movement is recorded, including the **purpose** provided by the app:
 
 ## PersonalDataHub OpenClaw Extension
 
-The **PersonalDataHub** extension connects OpenClaw to Peekaboo. It does not know about manifests or policies — it simply sends requests with a `purpose` string. The Hub resolves the appropriate policy (configured by the owner via GUI) and logs the purpose in the audit database.
+The **PersonalDataHub** extension connects OpenClaw to PersonalDataHub. It does not know about manifests or policies — it simply sends requests with a `purpose` string. The Hub resolves the appropriate policy (configured by the owner via GUI) and logs the purpose in the audit database.
 
 **Extension registration:**
 
@@ -474,7 +474,7 @@ register(api: OpenClawExtensionApi) {
   // Tool: pull personal data
   api.registerTool({
     name: "personal_data_pull",
-    description: "Pull personal data (emails, etc.) from Peekaboo Hub. Must include a purpose.",
+    description: "Pull personal data (emails, etc.) from PersonalDataHub. Must include a purpose.",
     parameters: Type.Object({
       source: Type.String({ description: "Data source: 'gmail'" }),
       type: Type.Optional(Type.String({ description: "Data type: 'email'" })),
@@ -535,7 +535,7 @@ register(api: OpenClawExtensionApi) {
 
 ## V1 Use Cases: Gmail and GitHub
 
-The first version of Peekaboo supports two source connectors. Both enforce **user-defined boundaries** at the source connector level — the `pull` operator applies boundary constraints as query parameters when fetching from the source API.
+The first version of PersonalDataHub supports two source connectors. Both enforce **user-defined boundaries** at the source connector level — the `pull` operator applies boundary constraints as query parameters when fetching from the source API.
 
 ### Source Configuration
 
@@ -710,9 +710,9 @@ When a manifest runs, the `pull` operator queries Gmail with `after:2026/01/01`,
 
 **What gets fetched:**
 
-Peekaboo controls **read access only** for GitHub. The GitHub connector queries the GitHub API (using the owner's credentials) when a `pull` operator targets `source: "github"`. It only fetches from repos listed in `boundary.repos`. If local caching is enabled, the connector syncs to the encrypted cache at the configured interval.
+PersonalDataHub controls **read access only** for GitHub. The GitHub connector queries the GitHub API (using the owner's credentials) when a `pull` operator targets `source: "github"`. It only fetches from repos listed in `boundary.repos`. If local caching is enabled, the connector syncs to the encrypted cache at the configured interval.
 
-**Outbound actions** (commenting on issues, creating issues) are **not staged through Peekaboo**. Instead, the agent uses its own scoped GitHub credentials (a fine-grained PAT for a separate GitHub account) to perform writes directly. The agent's credentials are scoped to specific repos with limited permissions, so the blast radius is inherently constrained by GitHub itself.
+**Outbound actions** (commenting on issues, creating issues) are **not staged through PersonalDataHub**. Instead, the agent uses its own scoped GitHub credentials (a fine-grained PAT for a separate GitHub account) to perform writes directly. The agent's credentials are scoped to specific repos with limited permissions, so the blast radius is inherently constrained by GitHub itself.
 
 | Field | GitHub Mapping |
 |---|---|
@@ -819,7 +819,7 @@ stage_it: stage { action_type: "reply_email", requires_approval: true }
 
 **Setup:**
 ```
-1. Owner opens Peekaboo GUI in browser (http://localhost:PORT)
+1. Owner opens PersonalDataHub GUI in browser (http://localhost:PORT)
 2. Owner connects Gmail (OAuth flow) and GitHub (enters PAT)
 3. Owner configures boundaries via GUI:
    - Gmail: only emails after 2026-01-01
@@ -894,7 +894,7 @@ User: "Add a comment to frontend issue #42 saying we'll fix it in the next sprin
 ### Project Structure
 
 ```
-peekaboo/
+PersonalDataHub/
 ├── src/
 │   ├── index.ts                    # entry point
 │   ├── server/                     # HTTP server

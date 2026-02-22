@@ -12,16 +12,16 @@ import type { ConnectorRegistry } from './connectors/types.js';
 const configPath = process.argv[2] ?? resolve('hub-config.yaml');
 
 if (!existsSync(configPath)) {
-  console.log('Peekaboo v0.1.0');
+  console.log('PersonalDataHub v0.1.0');
   console.log(`\nNo config file found at: ${configPath}`);
-  console.log("Run 'npx peekaboo init' to get started.");
+  console.log("Run 'npx pdh init' to get started.");
   process.exit(1);
 }
 
 const config = loadConfig(configPath);
-const dbPath = resolve('peekaboo.db');
+const dbPath = resolve('pdh.db');
 const db = getDb(dbPath);
-const encryptionKey = config.encryption_key ?? process.env.PEEKABOO_ENCRYPTION_KEY ?? 'peekaboo-default-key';
+const encryptionKey = config.encryption_key ?? process.env.PDH_ENCRYPTION_KEY ?? 'pdh-default-key';
 
 // Token manager for encrypted OAuth token storage
 const tokenManager = new TokenManager(db, encryptionKey);

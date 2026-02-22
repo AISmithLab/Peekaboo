@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
 
 function makeTmpDir(): string {
-  const dir = join(tmpdir(), `peekaboo-gui-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `pdh-gui-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -60,8 +60,7 @@ describe('GUI Routes', () => {
     const res = await app.request('/');
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(text).toContain('Peekaboo');
-    expect(text).toContain('Personal Data Hub');
+    expect(text).toContain('PersonalDataHub');
   });
 
   it('GET /api/sources returns configured sources', async () => {

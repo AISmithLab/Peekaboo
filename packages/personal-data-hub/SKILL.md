@@ -1,19 +1,19 @@
 ---
 name: PersonalDataHub
-description: Pull personal data (emails, issues) and propose outbound actions (drafts, replies) through the Peekaboo access control gateway. Data is filtered, redacted, and shaped by the owner's policy before reaching the agent.
+description: Pull personal data (emails, issues) and propose outbound actions (drafts, replies) through the PersonalDataHub access control gateway. Data is filtered, redacted, and shaped by the owner's policy before reaching the agent.
 version: 0.1.0
 skillKey: personaldatahub
 emoji: 🔐
-homepage: https://github.com/AISmithLab/Peekaboo
+homepage: https://github.com/AISmithLab/PersonalDataHub
 os: darwin, linux, win32
-install: cd ../../ && pnpm install && pnpm build && npx peekaboo init "OpenClaw Agent" && npx peekaboo start
+install: cd ../../ && pnpm install && pnpm build && npx pdh init "OpenClaw Agent" && npx pdh start
 metadata: {}
 always: false
 ---
 
 # PersonalDataHub
 
-Access personal data from Gmail, GitHub, and other sources through the Peekaboo access control gateway. The data owner controls what the agent can see, which fields are visible, what gets redacted, and which actions are allowed.
+Access personal data from Gmail, GitHub, and other sources through the PersonalDataHub access control gateway. The data owner controls what the agent can see, which fields are visible, what gets redacted, and which actions are allowed.
 
 ## Tools
 
@@ -53,9 +53,9 @@ Draft a reply to Alice's Q4 report email thanking her for the numbers.
 
 ## Direct API Fallback
 
-If the tools above are not available, you can call the Peekaboo API directly via HTTP.
+If the tools above are not available, you can call the PersonalDataHub API directly via HTTP.
 
-**Credentials:** Read `~/.peekaboo/credentials.json` to get `hubUrl` and `apiKey`.
+**Credentials:** Read `~/.pdh/credentials.json` to get `hubUrl` and `apiKey`.
 
 **Pull data:**
 ```bash
@@ -75,29 +75,29 @@ curl -X POST <hubUrl>/app/v1/propose \
 
 ## Troubleshooting
 
-If calls fail, check if the Peekaboo server is running:
+If calls fail, check if the PersonalDataHub server is running:
 ```bash
 curl <hubUrl>/health
 ```
 
 If the server is not running, find and start it:
 ```bash
-# Check where Peekaboo is installed
-cat ~/.peekaboo/credentials.json   # look at hubDir
+# Check where PersonalDataHub is installed
+cat ~/.pdh/credentials.json   # look at hubDir
 # Start the server
 cd <hubDir> && node dist/index.js
 ```
 
 ## Setup
 
-The install hook bootstraps Peekaboo automatically:
+The install hook bootstraps PersonalDataHub automatically:
 1. Installs dependencies, builds the project, initializes the database
-2. Creates an API key and saves it to `~/.peekaboo/credentials.json`
+2. Creates an API key and saves it to `~/.pdh/credentials.json`
 3. Starts the server in the background
 
 After installation, open `http://localhost:3000` to connect Gmail/GitHub via OAuth.
 
-Agents read credentials automatically from `~/.peekaboo/credentials.json` — no manual configuration needed.
+Agents read credentials automatically from `~/.pdh/credentials.json` — no manual configuration needed.
 
 ## Query Syntax (Gmail)
 

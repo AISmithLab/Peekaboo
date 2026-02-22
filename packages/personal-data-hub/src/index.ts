@@ -1,13 +1,13 @@
 /**
- * PersonalDataHub — OpenClaw skill for interacting with Peekaboo.
+ * PersonalDataHub — OpenClaw skill for interacting with PersonalDataHub.
  *
  * Registers tools that let the agent pull personal data and propose
- * outbound actions through the Peekaboo access control gateway.
+ * outbound actions through the PersonalDataHub access control gateway.
  *
  * Config resolution order:
  *   1. Plugin config (hubUrl + apiKey passed directly)
- *   2. Environment variables (PEEKABOO_HUB_URL + PEEKABOO_API_KEY)
- *   3. Credentials file (~/.peekaboo/credentials.json, written by npx peekaboo init)
+ *   2. Environment variables (PDH_HUB_URL + PDH_API_KEY)
+ *   3. Credentials file (~/.pdh/credentials.json, written by npx pdh init)
  *   4. Auto-discovery (probe localhost, create API key)
  */
 
@@ -24,7 +24,7 @@ export interface PersonalDataHubPluginConfig {
 export default {
   id: 'personal-data-hub',
   name: 'Personal Data Hub',
-  description: 'Unified interface to personal data through Peekaboo access control gateway',
+  description: 'Unified interface to personal data through PersonalDataHub access control gateway',
 
   configSchema: {
     safeParse(value: unknown) {
@@ -68,17 +68,17 @@ export default {
   }) {
     let config = api.pluginConfig as PersonalDataHubPluginConfig | undefined;
 
-    // Step 2: Check environment variables (ClawHub injects from skills.entries.peekaboo.env)
+    // Step 2: Check environment variables (ClawHub injects from skills.entries.pdh.env)
     if (!config?.hubUrl || !config?.apiKey) {
-      const envHubUrl = process.env.PEEKABOO_HUB_URL;
-      const envApiKey = process.env.PEEKABOO_API_KEY;
+      const envHubUrl = process.env.PDH_HUB_URL;
+      const envApiKey = process.env.PDH_API_KEY;
       if (envHubUrl && envApiKey) {
         config = { hubUrl: envHubUrl, apiKey: envApiKey };
         api.logger.info(`PersonalDataHub: Configured from environment variables (hub: ${envHubUrl})`);
       }
     }
 
-    // Step 3: Check credentials file (~/.peekaboo/credentials.json)
+    // Step 3: Check credentials file (~/.pdh/credentials.json)
     if (!config?.hubUrl || !config?.apiKey) {
       const creds = readCredentials();
       if (creds) {
@@ -126,9 +126,9 @@ export default {
     if (!config?.hubUrl || !config?.apiKey) {
       api.logger.warn(
         'PersonalDataHub: Missing hubUrl or apiKey. Could not find a running hub.\n' +
-        '  To set up Peekaboo:\n' +
-        '  1. Run: npx peekaboo init\n' +
-        '  2. Run: npx peekaboo start\n' +
+        '  To set up PersonalDataHub:\n' +
+        '  1. Run: npx pdh init\n' +
+        '  2. Run: npx pdh start\n' +
         '  3. Restart the agent — it will auto-connect.\n' +
         '  Or configure manually: { "hubUrl": "http://localhost:3000", "apiKey": "pk_..." }',
       );

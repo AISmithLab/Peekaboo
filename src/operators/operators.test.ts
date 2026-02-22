@@ -17,7 +17,7 @@ import type Database from 'better-sqlite3';
 import type { HubConfigParsed } from '../config/schema.js';
 
 function makeTmpDir(): string {
-  const dir = join(tmpdir(), `peekaboo-op-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `pdh-op-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

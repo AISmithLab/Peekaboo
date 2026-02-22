@@ -1,30 +1,30 @@
 {
   "id": "personal-data-hub",
   "name": "Personal Data Hub",
-  "description": "Unified interface to personal data through Peekaboo access control gateway",
+  "description": "Unified interface to personal data through PersonalDataHub access control gateway",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
       "hubUrl": {
         "type": "string",
-        "description": "Base URL of the Peekaboo hub (e.g., http://localhost:7007)"
+        "description": "Base URL of the PersonalDataHub (e.g., http://localhost:7007)"
       },
       "apiKey": {
         "type": "string",
-        "description": "API key for authenticating with the Peekaboo hub"
+        "description": "API key for authenticating with the PersonalDataHub"
       }
     },
     "required": ["hubUrl", "apiKey"]
   },
   "uiHints": {
     "hubUrl": {
-      "label": "Peekaboo Hub URL",
-      "help": "The base URL where Peekaboo is running"
+      "label": "PersonalDataHub URL",
+      "help": "The base URL where PersonalDataHub is running"
     },
     "apiKey": {
       "label": "API Key",
-      "help": "API key generated from Peekaboo GUI settings",
+      "help": "API key generated from PersonalDataHub GUI settings",
       "sensitive": true
     }
   }

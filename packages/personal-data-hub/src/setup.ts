@@ -1,9 +1,9 @@
 /**
  * Hub discovery and auto-setup utilities.
  *
- * Used by the skill to detect a running Peekaboo hub and create
+ * Used by the skill to detect a running PersonalDataHub and create
  * an API key for itself. All communication is over HTTP — no dependency
- * on the main Peekaboo source.
+ * on the main PersonalDataHub source.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -27,11 +27,11 @@ export interface Credentials {
   hubDir?: string;
 }
 
-/** Path to the credentials file written by `npx peekaboo init`. */
-export const CREDENTIALS_PATH = join(homedir(), '.peekaboo', 'credentials.json');
+/** Path to the credentials file written by `npx pdh init`. */
+export const CREDENTIALS_PATH = join(homedir(), '.pdh', 'credentials.json');
 
 /**
- * Read credentials from ~/.peekaboo/credentials.json.
+ * Read credentials from ~/.pdh/credentials.json.
  * Returns null if the file doesn't exist or is malformed.
  */
 export function readCredentials(): Credentials | null {
@@ -47,7 +47,7 @@ export function readCredentials(): Credentials | null {
 }
 
 /**
- * Check if a Peekaboo hub is reachable at the given URL.
+ * Check if a PersonalDataHub is reachable at the given URL.
  * Hits GET /health and returns the result.
  */
 export async function checkHub(hubUrl: string, timeoutMs = 3000): Promise<HealthCheckResult> {
@@ -125,7 +125,7 @@ export const DEFAULT_HUB_URLS = [
 ];
 
 /**
- * Try to discover a running Peekaboo hub by probing common URLs.
+ * Try to discover a running PersonalDataHub by probing common URLs.
  * Returns the first URL that responds to /health, or null.
  */
 export async function discoverHub(): Promise<string | null> {

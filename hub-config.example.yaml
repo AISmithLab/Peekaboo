@@ -1,5 +1,5 @@
-# Peekaboo configuration
-# OAuth credentials are fetched automatically during 'npx peekaboo init'.
+# PersonalDataHub configuration
+# OAuth credentials are fetched automatically during 'npx pdh init'.
 # To use your own credentials instead, see docs/OAUTH-SETUP.md.
 sources:
   gmail:

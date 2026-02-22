@@ -14,7 +14,7 @@ export const TEST_API_KEY = 'pk_test_e2e_key_123';
 export const TEST_KEY_HASH = hashSync(TEST_API_KEY, 10);
 
 export function makeTmpDir(): string {
-  const dir = join(tmpdir(), `peekaboo-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `pdh-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

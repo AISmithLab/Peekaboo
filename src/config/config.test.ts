@@ -6,7 +6,7 @@ import { loadConfig, loadConfigFiles } from './loader.js';
 import { hubConfigSchema } from './schema.js';
 
 function makeTmpDir(): string {
-  const dir = join(tmpdir(), `peekaboo-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `pdh-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

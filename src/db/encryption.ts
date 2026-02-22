@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
-const SALT = 'peekaboo-salt-v1';
+const SALT = 'pdh-salt-v1';
 
 /**
  * Derive a 32-byte encryption key from a master secret.

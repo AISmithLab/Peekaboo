@@ -58,5 +58,5 @@ export function startServer(deps: ServerDeps): void {
     port,
   });
 
-  console.log(`Peekaboo server listening on http://127.0.0.1:${port}`);
+  console.log(`PersonalDataHub server listening on http://127.0.0.1:${port}`);
 }

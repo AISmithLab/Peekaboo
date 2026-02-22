@@ -2,10 +2,10 @@
 
 ## Default Mode (No Setup Required)
 
-`npx peekaboo init` fetches default OAuth credentials and writes them into `hub-config.yaml` automatically. Peekaboo uses **PKCE (Proof Key for Code Exchange)** for secure authorization. No additional configuration needed — just click "Connect Gmail" or "Connect GitHub" in the Peekaboo GUI.
+`npx pdh init` fetches default OAuth credentials and writes them into `hub-config.yaml` automatically. PersonalDataHub uses **PKCE (Proof Key for Code Exchange)** for secure authorization. No additional configuration needed — just click "Connect Gmail" or "Connect GitHub" in the PersonalDataHub GUI.
 
 How it works:
-- Peekaboo generates a cryptographic code verifier and challenge (PKCE S256)
+- PersonalDataHub generates a cryptographic code verifier and challenge (PKCE S256)
 - Redirects you to Google/GitHub to authorize
 - Exchanges the authorization code + code verifier for tokens locally
 - Tokens are stored encrypted on your machine — they never leave your device
@@ -16,7 +16,7 @@ Google Desktop app client secrets are [not confidential](https://developers.goog
 
 ## Advanced: Using Your Own OAuth App
 
-If you prefer to use your own OAuth app credentials (e.g., for branding, higher rate limits, or organizational policies), you can provide them in `hub-config.yaml`. When custom credentials are present, Peekaboo uses them instead of the defaults. PKCE is always applied regardless.
+If you prefer to use your own OAuth app credentials (e.g., for branding, higher rate limits, or organizational policies), you can provide them in `hub-config.yaml`. When custom credentials are present, PersonalDataHub uses them instead of the defaults. PKCE is always applied regardless.
 
 ### Gmail
 
@@ -35,7 +35,7 @@ If you prefer to use your own OAuth app credentials (e.g., for branding, higher 
 1. Go to **APIs & Services > OAuth consent screen**
 2. Choose **External** (or **Internal** if using Google Workspace)
 3. Fill in:
-   - App name: e.g. `Peekaboo`
+   - App name: e.g. `PersonalDataHub`
    - User support email: your email
 4. Add scopes: `gmail.readonly` and `gmail.compose`
 5. Add yourself as a **test user** (required while app is in "Testing" status)
@@ -78,7 +78,7 @@ sources:
 1. Go to [GitHub Settings > Developer settings > GitHub Apps](https://github.com/settings/apps)
 2. Click **New GitHub App**
 3. Fill in:
-   - **App name:** `Peekaboo` (must be globally unique)
+   - **App name:** `PersonalDataHub` (must be globally unique)
    - **Homepage URL:** `http://127.0.0.1:3000`
    - **Callback URL:** `http://127.0.0.1:3000/oauth/github/callback`
    - Check **Request user authorization (OAuth) during installation**

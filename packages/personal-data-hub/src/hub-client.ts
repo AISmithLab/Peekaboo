@@ -1,5 +1,5 @@
 /**
- * Thin HTTP client wrapping the Peekaboo App API endpoints.
+ * Thin HTTP client wrapping the PersonalDataHub App API endpoints.
  * The skill does not know about manifests or policies — it simply
  * sends requests with a `purpose` string. The Hub resolves the policy internally.
  */
@@ -51,7 +51,7 @@ export class HubClient {
   }
 
   /**
-   * Pull data from a source through Peekaboo.
+   * Pull data from a source through PersonalDataHub.
    * The Hub applies the owner's manifest/policy to filter, redact, and shape the data.
    */
   async pull(params: PullParams): Promise<PullResult> {
@@ -73,7 +73,7 @@ export class HubClient {
   }
 
   /**
-   * Propose an outbound action through Peekaboo staging.
+   * Propose an outbound action through PersonalDataHub staging.
    * The action goes to the owner's staging queue for review before execution.
    */
   async propose(params: ProposeParams): Promise<ProposeResult> {
@@ -101,7 +101,7 @@ export class HubApiError extends Error {
     public readonly statusCode: number,
     public readonly body: string,
   ) {
-    super(`Peekaboo API error on ${endpoint}: ${statusCode} - ${body}`);
+    super(`PersonalDataHub API error on ${endpoint}: ${statusCode} - ${body}`);
     this.name = 'HubApiError';
   }
 }

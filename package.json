@@ -1,11 +1,11 @@
 {
-  "name": "peekaboo",
+  "name": "personal-data-hub",
   "version": "0.1.0",
   "description": "Centralized access control layer for personal data",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "peekaboo": "dist/cli.js"
+    "pdh": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",

@@ -277,7 +277,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
         headers: {
           Authorization: `Bearer ${tokenData.access_token}`,
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'Peekaboo/0.1.0',
+          'User-Agent': 'PersonalDataHub/0.1.0',
         },
       });
 

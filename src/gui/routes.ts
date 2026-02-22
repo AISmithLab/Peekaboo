@@ -318,7 +318,7 @@ function getIndexHtml(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Peekaboo - Personal Data Hub</title>
+  <title>PersonalDataHub</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
@@ -432,7 +432,7 @@ function getIndexHtml(): string {
 <body>
   <div id="app">
     <div class="header">
-      <h1>Peekaboo</h1>
+      <h1>PersonalDataHub</h1>
       <span class="version">v0.1.0</span>
     </div>
     <div class="tabs" id="tabs">

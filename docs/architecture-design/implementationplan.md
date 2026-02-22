@@ -1,6 +1,6 @@
-# Peekaboo Implementation Plan
+# PersonalDataHub Implementation Plan
 
-Step-by-step plan for building Peekaboo V1. Each step is self-contained, builds on previous steps, and includes validation criteria.
+Step-by-step plan for building PersonalDataHub V1. Each step is self-contained, builds on previous steps, and includes validation criteria.
 
 ---
 
@@ -383,7 +383,7 @@ Request: POST /app/v1/pull { source: "gmail", purpose: "Find emails about Q4 rep
 
 ## Step 10: GitHub Connector
 
-**What:** Peekaboo's role for GitHub is **access control only** — it manages which repositories the agent's GitHub account can access. The agent works with GitHub directly using its own credentials. Peekaboo does not fetch or proxy GitHub data; it controls the boundary (which repos, what permission level).
+**What:** PersonalDataHub's role for GitHub is **access control only** — it manages which repositories the agent's GitHub account can access. The agent works with GitHub directly using its own credentials. PersonalDataHub does not fetch or proxy GitHub data; it controls the boundary (which repos, what permission level).
 
 **Implement:**
 - `src/connectors/github/connector.ts`:
@@ -411,7 +411,7 @@ Request: POST /app/v1/pull { source: "gmail", purpose: "Find emails about Q4 rep
 
 ## Step 11: Gmail Connector
 
-**What:** Gmail is a true data connector — unlike GitHub (access control only), Peekaboo fetches and mediates Gmail data on behalf of the owner. Two responsibilities: (1) pull emails via `POST /app/v1/pull`, (2) execute approved outbound actions (send/reply/draft) after owner approves via GUI.
+**What:** Gmail is a true data connector — unlike GitHub (access control only), PersonalDataHub fetches and mediates Gmail data on behalf of the owner. Two responsibilities: (1) pull emails via `POST /app/v1/pull`, (2) execute approved outbound actions (send/reply/draft) after owner approves via GUI.
 
 **Implement:**
 - `src/connectors/gmail/connector.ts`:
@@ -427,7 +427,7 @@ Request: POST /app/v1/pull { source: "gmail", purpose: "Find emails about Q4 rep
     - `reply_email`: reply to a thread
     - `draft_email`: create a draft
   - `sync()`: fetch latest emails since last sync, write to `cached_data` via `store` logic (upsert by `source_item_id`). Called on a schedule to keep local cache fresh.
-- **Scheduling**: on server startup (`peekaboo serve`), set up `setInterval` to call `sync()` at the configured interval (default: 5 minutes). Interval is configurable in `hub-config.yaml` under `sources.gmail.sync_interval`.
+- **Scheduling**: on server startup (`pdh serve`), set up `setInterval` to call `sync()` at the configured interval (default: 5 minutes). Interval is configurable in `hub-config.yaml` under `sources.gmail.sync_interval`.
 
 **Dependencies:** `googleapis`
 
@@ -442,7 +442,7 @@ Request: POST /app/v1/pull { source: "gmail", purpose: "Find emails about Q4 rep
 
 ## Step 12: Owner GUI
 
-**What:** Local web GUI for the owner to manage Peekaboo. Tab-based layout (like Excel tabs) — each connected service gets its own tab. Served by the same Hono server from Step 9. Reads/writes DB directly.
+**What:** Local web GUI for the owner to manage PersonalDataHub. Tab-based layout (like Excel tabs) — each connected service gets its own tab. Served by the same Hono server from Step 9. Reads/writes DB directly.
 
 **Layout:**
 - Top-level navigation: tabs for each service (e.g., **Gmail**, **GitHub**) + a **Settings** tab
@@ -558,19 +558,19 @@ Request: POST /app/v1/pull { source: "gmail", purpose: "Find emails about Q4 rep
 
 ## Step 14: PersonalDataHub OpenClaw Extension
 
-**What:** Create an OpenClaw extension called **PersonalDataHub** that intelligently interacts with the Peekaboo Hub. The extension understands natural language queries about the user's personal data and translates them into the right sequence of Peekaboo API calls (pull, propose). It handles multi-step workflows — e.g., "Collect all unanswered emails since this morning and draft responses" becomes: pull emails → filter unanswered → for each email, propose a draft reply via staging.
+**What:** Create an OpenClaw extension called **PersonalDataHub** that intelligently interacts with the PersonalDataHub. The extension understands natural language queries about the user's personal data and translates them into the right sequence of PersonalDataHub API calls (pull, propose). It handles multi-step workflows — e.g., "Collect all unanswered emails since this morning and draft responses" becomes: pull emails → filter unanswered → for each email, propose a draft reply via staging.
 
 **Implement:**
 - `packages/personal-data-hub/` (OpenClaw extension):
   - `src/index.ts` — register the extension with OpenClaw
-  - `src/hub-client.ts` — thin HTTP client wrapping the 2 Peekaboo App API endpoints:
+  - `src/hub-client.ts` — thin HTTP client wrapping the 2 PersonalDataHub App API endpoints:
     - `pull(source, type?, params?, purpose)` → `POST /app/v1/pull`
     - `propose(source, actionType, actionData, purpose)` → `POST /app/v1/propose`
     - Reads API key from config, attaches `Authorization: Bearer pk_xxx`
     - The extension does not know about manifests or policies — it simply sends requests with a `purpose` string. The Hub resolves the policy internally.
   - `src/tools.ts` — registers tools that OpenClaw's agent can call:
-    - `personal_data_pull` — pull data from a source through Peekaboo. Agent must provide a `purpose`.
-    - `personal_data_propose` — propose an outbound action through Peekaboo staging. Agent must provide a `purpose`.
+    - `personal_data_pull` — pull data from a source through PersonalDataHub. Agent must provide a `purpose`.
+    - `personal_data_propose` — propose an outbound action through PersonalDataHub staging. Agent must provide a `purpose`.
   - `src/prompts.ts` — system prompt that teaches the agent how to work with personal data:
     - Available sources (gmail, github) and what data types each provides
     - Every request must include a clear `purpose` explaining why the data is needed
@@ -592,10 +592,10 @@ All examples show the actual JSON payloads sent to the REST API. `params.query` 
      ```json
      { "source": "gmail", "action_type": "draft_email", "action_data": { "to": "alice@company.com", "subject": "Re: Q4 Report", "body": "Thanks Alice, the numbers look good." , "in_reply_to": "msg_abc123" }, "purpose": "Draft reply to unanswered email from Alice about Q4 report" }
      ```
-   - Owner reviews drafts in Peekaboo GUI staging queue
+   - Owner reviews drafts in PersonalDataHub GUI staging queue
 
 2. **"Summarize my GitHub issues for this week"**
-   - Agent knows GitHub goes through agent's own credentials (not Peekaboo pull)
+   - Agent knows GitHub goes through agent's own credentials (not PersonalDataHub pull)
    - Uses its own GitHub access to read issues from allowed repos
    - Summarizes and presents to user
 
