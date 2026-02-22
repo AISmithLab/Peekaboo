@@ -23,6 +23,9 @@ peekaboo/
 │   │   └── github/
 │   │       ├── connector.ts     # GitHub access validation, fetch issues/PRs
 │   │       └── setup.ts         # Grant/revoke collaborator access
+│   ├── fixtures/
+│   │   └── emails.ts            # Synthetic demo email dataset (15 emails)
+│   ├── demo.ts                  # Load/unload demo data into DB
 │   ├── manifest/                # Manifest DSL
 │   │   ├── types.ts             # Manifest, OperatorDecl interfaces
 │   │   ├── parser.ts            # Line-oriented parser
@@ -235,6 +238,37 @@ Request → API key check → resolve manifest → parse graph
   → pull (fetch from source) → select (keep fields) → transform (redact/truncate)
   → response
 ```
+
+## Demo Data
+
+You can load synthetic email data to try the full pull pipeline without connecting a real Gmail account. Demo data is inserted directly into `cached_data`, so the pull operator serves it without needing OAuth or a live connector.
+
+```bash
+# Load 15 synthetic emails and 3 demo manifests
+npx peekaboo demo-load
+
+# Start the server, then pull using a demo manifest
+npx peekaboo start
+curl -X POST http://localhost:3000/app/v1/pull \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"manifest_id": "demo-gmail-readonly"}'
+
+# Remove all demo data when done
+npx peekaboo demo-unload
+```
+
+The three demo manifests:
+
+| Manifest ID | Pipeline |
+|---|---|
+| `demo-gmail-readonly` | pull + select (title, body, labels, author_name) |
+| `demo-gmail-metadata` | pull + select (title, labels, author_name only) |
+| `demo-gmail-redacted` | pull + select + redact SSNs |
+
+The `demo-gmail-redacted` manifest demonstrates redaction — two of the synthetic emails contain SSN-formatted strings that get replaced with `[SSN REDACTED]`.
+
+Demo data is identified by prefix: emails have `source_item_id` starting with `demo_`, manifests have `id` starting with `demo-`. Loading is idempotent (safe to run multiple times).
 
 ## Testing
 
