@@ -252,7 +252,7 @@ npx peekaboo start
 curl -X POST http://localhost:3000/app/v1/pull \
   -H "Authorization: Bearer <your-api-key>" \
   -H "Content-Type: application/json" \
-  -d '{"manifest_id": "demo-gmail-readonly"}'
+  -d '{"manifest_id": "demo-gmail-readonly", "purpose": "Test demo pull"}'
 
 # Remove all demo data when done
 npx peekaboo demo-unload
