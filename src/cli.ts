@@ -7,6 +7,8 @@
  *   npx peekaboo start              Start the server in the background
  *   npx peekaboo stop               Stop the background server
  *   npx peekaboo status             Check if the server is running
+ *   npx peekaboo demo-load          Load synthetic demo emails and manifests
+ *   npx peekaboo demo-unload        Remove all demo data
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -17,6 +19,7 @@ import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { hashSync } from 'bcryptjs';
 import { getDb } from './db/db.js';
+import { loadDemoData, unloadDemoData } from './demo.js';
 
 // --- Credentials file path ---
 
@@ -262,6 +265,41 @@ if (isDirectRun) {
     } else {
       console.log('\n  Peekaboo server is not running.\n');
     }
+  } else if (command === 'demo-load') {
+    try {
+      const creds = readCredentials();
+      const hubDir = creds?.hubDir ?? process.cwd();
+      const dbPath = resolve(hubDir, 'peekaboo.db');
+      const db = getDb(dbPath);
+      const result = loadDemoData(db);
+      db.close();
+      console.log('\n  Demo data loaded successfully!\n');
+      console.log(`  Emails:    ${result.emailCount} synthetic emails inserted`);
+      console.log(`  Manifests: ${result.manifestCount} demo manifests created`);
+      console.log('\n  Demo manifests:');
+      console.log('    demo-gmail-readonly  — pull + select (title, body, labels, author_name)');
+      console.log('    demo-gmail-metadata  — pull + select (title, labels, author_name only)');
+      console.log('    demo-gmail-redacted  — pull + select + redact SSNs');
+      console.log('\n  Try: npx peekaboo start, then POST /app/v1/pull with a demo manifest.\n');
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  } else if (command === 'demo-unload') {
+    try {
+      const creds = readCredentials();
+      const hubDir = creds?.hubDir ?? process.cwd();
+      const dbPath = resolve(hubDir, 'peekaboo.db');
+      const db = getDb(dbPath);
+      const result = unloadDemoData(db);
+      db.close();
+      console.log('\n  Demo data removed.\n');
+      console.log(`  Emails removed:    ${result.emailsRemoved}`);
+      console.log(`  Manifests removed: ${result.manifestsRemoved}\n`);
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
   } else {
     console.log('Peekaboo CLI v0.1.0');
     console.log('\nUsage:');
@@ -269,5 +307,7 @@ if (isDirectRun) {
     console.log('  npx peekaboo start             Start the server in the background');
     console.log('  npx peekaboo stop              Stop the background server');
     console.log('  npx peekaboo status            Check if the server is running');
+    console.log('  npx peekaboo demo-load         Load synthetic demo emails and manifests');
+    console.log('  npx peekaboo demo-unload       Remove all demo data');
   }
 }
