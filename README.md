@@ -212,7 +212,7 @@ Actions are staged for owner review — not executed until approved via the GUI.
 ## Documentation
 
 - [Setup Guide](docs/SETUP.md) — install and run Peekaboo (ClawHub or from source)
-- [Development Guide](docs/DEVELOPMENT.md) — codebase structure and how to modify the code
+- [Development Guide](docs/DEVELOPMENT.md) — for contributors: codebase structure, how to add connectors and operators, demo data, and testing
 - [Design Doc](docs/architecture-design/design.md) — full architecture and design rationale
 - [Implementation Plan](docs/architecture-design/implementationplan.md) — step-by-step build plan
 
