@@ -4,7 +4,7 @@ import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { compareSync } from 'bcryptjs';
 import Database from 'better-sqlite3';
-import { init, writeCredentials, readCredentials, CREDENTIALS_PATH } from './cli.js';
+import { init, reset, writeCredentials, readCredentials, CREDENTIALS_PATH, CREDENTIALS_DIR } from './cli.js';
 
 function makeTmpDir(): string {
   const dir = join(tmpdir(), `peekaboo-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -99,6 +99,68 @@ describe('CLI init', () => {
     init(tmpDir, { port: 7007 });
     const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf-8'));
     expect(creds.hubUrl).toBe('http://localhost:7007');
+  });
+});
+
+describe('CLI reset', () => {
+  let tmpDir: string;
+  const credBackup = CREDENTIALS_PATH + '.backup-reset';
+  const pidPath = join(CREDENTIALS_DIR, 'server.pid');
+  const pidBackup = pidPath + '.backup-reset';
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    // Back up credential files so reset tests don't interfere
+    if (existsSync(CREDENTIALS_PATH)) {
+      writeFileSync(credBackup, readFileSync(CREDENTIALS_PATH, 'utf-8'), 'utf-8');
+      rmSync(CREDENTIALS_PATH);
+    }
+    if (existsSync(pidPath)) {
+      writeFileSync(pidBackup, readFileSync(pidPath, 'utf-8'), 'utf-8');
+      rmSync(pidPath);
+    }
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+    // Restore backups
+    if (existsSync(credBackup)) {
+      writeFileSync(CREDENTIALS_PATH, readFileSync(credBackup, 'utf-8'), 'utf-8');
+      rmSync(credBackup);
+    }
+    if (existsSync(pidBackup)) {
+      writeFileSync(pidPath, readFileSync(pidBackup, 'utf-8'), 'utf-8');
+      rmSync(pidBackup);
+    }
+  });
+
+  it('removes generated hub files and credentials', () => {
+    init(tmpDir);
+    // All hub files should exist
+    expect(existsSync(join(tmpDir, '.env'))).toBe(true);
+    expect(existsSync(join(tmpDir, 'hub-config.yaml'))).toBe(true);
+    expect(existsSync(join(tmpDir, 'peekaboo.db'))).toBe(true);
+    expect(existsSync(CREDENTIALS_PATH)).toBe(true);
+
+    const removed = reset(tmpDir);
+    expect(removed.length).toBeGreaterThanOrEqual(4);
+    expect(existsSync(join(tmpDir, '.env'))).toBe(false);
+    expect(existsSync(join(tmpDir, 'hub-config.yaml'))).toBe(false);
+    expect(existsSync(join(tmpDir, 'peekaboo.db'))).toBe(false);
+    expect(existsSync(CREDENTIALS_PATH)).toBe(false);
+  });
+
+  it('allows init to succeed after reset', () => {
+    init(tmpDir);
+    reset(tmpDir);
+    // Second init should not throw
+    const result = init(tmpDir);
+    expect(result.apiKey).toMatch(/^pk_/);
+  });
+
+  it('returns empty array when nothing to remove', () => {
+    const removed = reset(tmpDir);
+    expect(removed).toEqual([]);
   });
 });
 

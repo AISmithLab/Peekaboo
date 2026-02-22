@@ -7,6 +7,7 @@
  *   npx peekaboo start              Start the server in the background
  *   npx peekaboo stop               Stop the background server
  *   npx peekaboo status             Check if the server is running
+ *   npx peekaboo reset               Remove all generated files and start fresh
  *   npx peekaboo demo-load          Load synthetic demo emails and manifests
  *   npx peekaboo demo-unload        Remove all demo data
  */
@@ -208,6 +209,43 @@ export function getServerPid(): number | null {
   }
 }
 
+// --- Reset ---
+
+const HUB_FILES = ['.env', 'hub-config.yaml', 'peekaboo.db', 'peekaboo.db-wal', 'peekaboo.db-shm'];
+const CRED_FILES = [CREDENTIALS_PATH, PID_PATH];
+
+/**
+ * Remove all generated Peekaboo files so `init` can run again cleanly.
+ * Stops the background server first if it's running.
+ * Returns the list of files that were actually deleted.
+ */
+export function reset(hubDir?: string): string[] {
+  // Stop the server if running
+  stopBackground();
+
+  // Resolve hubDir from credentials, fall back to cwd
+  const dir = hubDir ?? readCredentials()?.hubDir ?? process.cwd();
+
+  const removed: string[] = [];
+
+  for (const name of HUB_FILES) {
+    const p = resolve(dir, name);
+    if (existsSync(p)) {
+      unlinkSync(p);
+      removed.push(p);
+    }
+  }
+
+  for (const p of CRED_FILES) {
+    if (existsSync(p)) {
+      unlinkSync(p);
+      removed.push(p);
+    }
+  }
+
+  return removed;
+}
+
 // --- CLI runner (only executes when this file is the entry point) ---
 // Resolve symlinks so this works with npx (which symlinks node_modules/.bin/peekaboo → dist/cli.js)
 const isDirectRun = (() => {
@@ -265,6 +303,22 @@ if (isDirectRun) {
     } else {
       console.log('\n  Peekaboo server is not running.\n');
     }
+  } else if (command === 'reset') {
+    try {
+      const removed = reset();
+      if (removed.length === 0) {
+        console.log('\n  Nothing to remove — already clean.\n');
+      } else {
+        console.log('\n  Peekaboo reset complete. Removed:\n');
+        for (const f of removed) {
+          console.log(`    ${f}`);
+        }
+        console.log('\n  Run `npx peekaboo init` to start fresh.\n');
+      }
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
   } else if (command === 'demo-load') {
     try {
       const creds = readCredentials();
@@ -317,6 +371,7 @@ if (isDirectRun) {
     console.log('  npx peekaboo start             Start the server in the background');
     console.log('  npx peekaboo stop              Stop the background server');
     console.log('  npx peekaboo status            Check if the server is running');
+    console.log('  npx peekaboo reset             Remove all generated files and start fresh');
     console.log('  npx peekaboo demo-load         Load synthetic demo emails and manifests');
     console.log('  npx peekaboo demo-unload       Remove all demo data');
   }
