@@ -5,6 +5,7 @@ import { loadConfig } from './config/loader.js';
 import { startServer } from './server/server.js';
 import { GmailConnector } from './connectors/gmail/connector.js';
 import { GitHubConnector } from './connectors/github/connector.js';
+import { TokenManager } from './auth/token-manager.js';
 import type { ConnectorRegistry } from './connectors/types.js';
 
 const configPath = process.argv[2] ?? resolve('hub-config.yaml');
@@ -12,7 +13,8 @@ const configPath = process.argv[2] ?? resolve('hub-config.yaml');
 if (!existsSync(configPath)) {
   console.log('Peekaboo v0.1.0');
   console.log(`\nNo config file found at: ${configPath}`);
-  console.log('Copy hub-config.example.yaml to hub-config.yaml and configure your sources.');
+  console.log('Copy hub-config.example.yaml to hub-config.yaml and add your OAuth credentials.');
+  console.log('See docs/oauth-setup.md for setup instructions.');
   process.exit(1);
 }
 
@@ -21,24 +23,71 @@ const dbPath = resolve('peekaboo.db');
 const db = getDb(dbPath);
 const encryptionKey = config.encryption_key ?? process.env.PEEKABOO_ENCRYPTION_KEY ?? 'peekaboo-default-key';
 
+// Token manager for encrypted OAuth token storage
+const tokenManager = new TokenManager(db, encryptionKey);
+
 // Register connectors
 const connectorRegistry: ConnectorRegistry = new Map();
 
+// Try to restore Gmail connector from stored OAuth tokens, else fall back to config
 if (config.sources.gmail?.enabled) {
   const gmailConfig = config.sources.gmail;
-  connectorRegistry.set('gmail', new GmailConnector({
-    clientId: gmailConfig.owner_auth.clientId ?? '',
-    clientSecret: gmailConfig.owner_auth.clientSecret ?? '',
-  }));
+  const clientId = gmailConfig.owner_auth.clientId ?? '';
+  const clientSecret = gmailConfig.owner_auth.clientSecret ?? '';
+
+  const storedToken = tokenManager.getToken('gmail');
+  if (storedToken) {
+    const connector = new GmailConnector({
+      clientId,
+      clientSecret,
+      accessToken: storedToken.access_token,
+      refreshToken: storedToken.refresh_token,
+    });
+    connectorRegistry.set('gmail', connector);
+
+    // Persist refreshed tokens back to DB
+    connector.getAuth().on('tokens', (newTokens) => {
+      if (newTokens.access_token) {
+        const expiresAt = newTokens.expiry_date
+          ? new Date(newTokens.expiry_date).toISOString()
+          : undefined;
+        tokenManager.updateAccessToken('gmail', newTokens.access_token, expiresAt);
+      }
+    });
+
+    console.log('Gmail connector restored from stored OAuth token');
+  } else {
+    connectorRegistry.set('gmail', new GmailConnector({ clientId, clientSecret }));
+  }
 }
 
+// Try to restore GitHub connector from stored OAuth tokens, else fall back to config
 if (config.sources.github?.enabled) {
   const githubConfig = config.sources.github;
-  connectorRegistry.set('github', new GitHubConnector({
-    ownerToken: githubConfig.owner_auth.token ?? '',
-    agentUsername: githubConfig.agent_identity?.github_username ?? '',
-    allowedRepos: githubConfig.boundary.repos ?? [],
-  }));
+  const configRepos = githubConfig.boundary.repos ?? [];
+  const agentUsername = githubConfig.agent_identity?.github_username ?? '';
+
+  // Load user-selected repos from DB (merged with config repos)
+  const dbEnabledRepos = (db.prepare(
+    "SELECT full_name FROM github_repos WHERE enabled = 1",
+  ).all() as Array<{ full_name: string }>).map((r) => r.full_name);
+  const allowedRepos = dbEnabledRepos.length > 0 ? dbEnabledRepos : configRepos;
+
+  const storedToken = tokenManager.getToken('github');
+  if (storedToken) {
+    connectorRegistry.set('github', new GitHubConnector({
+      ownerToken: storedToken.access_token,
+      agentUsername,
+      allowedRepos,
+    }));
+    console.log(`GitHub connector restored from stored OAuth token (${allowedRepos.length} repos)`);
+  } else {
+    connectorRegistry.set('github', new GitHubConnector({
+      ownerToken: githubConfig.owner_auth.token ?? '',
+      agentUsername,
+      allowedRepos,
+    }));
+  }
 }
 
-startServer({ db, connectorRegistry, config, encryptionKey });
+startServer({ db, connectorRegistry, config, encryptionKey, tokenManager });

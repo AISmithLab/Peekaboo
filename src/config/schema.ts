@@ -39,12 +39,12 @@ const sourceConfigSchema = z.object({
   enabled: z.boolean().default(true),
   owner_auth: ownerAuthSchema,
   agent_identity: agentIdentitySchema.optional(),
-  boundary: sourceBoundarySchema,
+  boundary: sourceBoundarySchema.default({}),
   cache: cacheSchema.optional().default({ enabled: false, encrypt: true }),
 });
 
 export const hubConfigSchema = z.object({
-  sources: z.record(z.string(), sourceConfigSchema),
+  sources: z.record(z.string(), sourceConfigSchema).default({}),
   encryption_key: z.string().optional(),
   port: z.number().default(3000),
 });

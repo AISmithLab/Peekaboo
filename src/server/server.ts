@@ -3,14 +3,17 @@ import { serve } from '@hono/node-server';
 import type Database from 'better-sqlite3';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
+import type { TokenManager } from '../auth/token-manager.js';
 import { createAppApi } from './app-api.js';
 import { createGuiRoutes } from '../gui/routes.js';
+import { createOAuthRoutes } from '../auth/oauth-routes.js';
 
 interface ServerDeps {
   db: Database.Database;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
   encryptionKey?: string;
+  tokenManager: TokenManager;
 }
 
 export function createServer(deps: ServerDeps): Hono {
@@ -23,8 +26,23 @@ export function createServer(deps: ServerDeps): Hono {
   const appApi = createAppApi(deps);
   app.route('/app/v1', appApi);
 
-  // Mount GUI routes
-  const guiRoutes = createGuiRoutes(deps);
+  // Mount OAuth routes
+  const oauthRoutes = createOAuthRoutes({
+    db: deps.db,
+    connectorRegistry: deps.connectorRegistry,
+    config: deps.config,
+    tokenManager: deps.tokenManager,
+  });
+  app.route('/oauth', oauthRoutes);
+
+  // Mount GUI routes (must be last — catches '/')
+  const guiRoutes = createGuiRoutes({
+    db: deps.db,
+    connectorRegistry: deps.connectorRegistry,
+    config: deps.config,
+    encryptionKey: deps.encryptionKey,
+    tokenManager: deps.tokenManager,
+  });
   app.route('/', guiRoutes);
 
   return app;

@@ -4,6 +4,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { getDb } from '../db/db.js';
 import { createServer } from '../server/server.js';
+import { TokenManager } from '../auth/token-manager.js';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type Database from 'better-sqlite3';
@@ -44,8 +45,9 @@ describe('GUI Routes', () => {
     tmpDir = makeTmpDir();
     db = getDb(join(tmpDir, 'test.db'));
     const registry: ConnectorRegistry = new Map();
+    const tokenManager = new TokenManager(db, 'test');
     app = createServer({
-      db, connectorRegistry: registry, config: makeConfig(), encryptionKey: 'test',
+      db, connectorRegistry: registry, config: makeConfig(), encryptionKey: 'test', tokenManager,
     });
   });
 
@@ -139,5 +141,62 @@ describe('GUI Routes', () => {
     const audit = await app.request('/api/audit?event=action_approved');
     const auditJson = await audit.json() as { entries: Array<{ event: string }> };
     expect(auditJson.entries.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/staging/:actionId returns single action with parsed action_data', async () => {
+    db.prepare(
+      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+    ).run('act_single', 'gmail', 'draft_email', '{"to":"bob@co.com","subject":"Hi"}', 'Test');
+
+    const res = await app.request('/api/staging/act_single');
+    expect(res.status).toBe(200);
+    const json = await res.json() as { ok: boolean; action: { action_id: string; action_data: { to: string; subject: string } } };
+    expect(json.ok).toBe(true);
+    expect(json.action.action_id).toBe('act_single');
+    expect(json.action.action_data.to).toBe('bob@co.com');
+    expect(json.action.action_data.subject).toBe('Hi');
+  });
+
+  it('GET /api/staging/:actionId returns 404 for unknown action', async () => {
+    const res = await app.request('/api/staging/nonexistent');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/staging/:actionId/edit merges action_data', async () => {
+    db.prepare(
+      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+    ).run('act_edit', 'gmail', 'draft_email', '{"to":"alice@co.com","subject":"Old","body":"Hello"}', 'Test');
+
+    const res = await app.request('/api/staging/act_edit/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action_data: { subject: 'New Subject', body: 'Updated body' } }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json() as { ok: boolean; action_data: { to: string; subject: string; body: string } };
+    expect(json.ok).toBe(true);
+    expect(json.action_data.to).toBe('alice@co.com');
+    expect(json.action_data.subject).toBe('New Subject');
+    expect(json.action_data.body).toBe('Updated body');
+
+    // Verify persisted
+    const row = db.prepare('SELECT action_data FROM staging WHERE action_id = ?').get('act_edit') as { action_data: string };
+    const persisted = JSON.parse(row.action_data);
+    expect(persisted.subject).toBe('New Subject');
+  });
+
+  it('POST /api/staging/:actionId/edit rejects non-pending actions', async () => {
+    db.prepare(
+      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'approved')",
+    ).run('act_done', 'gmail', 'draft_email', '{"to":"x@co.com"}', 'Test');
+
+    const res = await app.request('/api/staging/act_done/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action_data: { subject: 'Nope' } }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json() as { ok: boolean; error: string };
+    expect(json.ok).toBe(false);
   });
 });

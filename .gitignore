@@ -3,8 +3,10 @@ dist/
 *.db
 *.db-journal
 *.db-wal
+*.db-shm
 .env
 .env.local
+hub-config.yaml
 .DS_Store
 coverage/
 *.tsbuildinfo

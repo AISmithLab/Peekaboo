@@ -6,6 +6,7 @@ import { hashSync } from 'bcryptjs';
 import { getDb } from '../db/db.js';
 import { createServer } from './server.js';
 import { AuditLog } from '../audit/log.js';
+import { TokenManager } from '../auth/token-manager.js';
 import type { DataRow, SourceConnector, ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type Database from 'better-sqlite3';
@@ -108,11 +109,13 @@ describe('HTTP Server', () => {
     setupDb(db);
 
     const registry: ConnectorRegistry = new Map([['gmail', makeMockConnector()]]);
+    const tokenManager = new TokenManager(db, 'test-secret');
     app = createServer({
       db,
       connectorRegistry: registry,
       config: makeConfig(),
       encryptionKey: 'test-secret',
+      tokenManager,
     });
   });
 

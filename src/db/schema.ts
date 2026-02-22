@@ -62,6 +62,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
   details TEXT NOT NULL DEFAULT '{}'
 )`;
 
+const CREATE_OAUTH_TOKENS = `
+CREATE TABLE IF NOT EXISTS oauth_tokens (
+  source TEXT PRIMARY KEY,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT,
+  token_type TEXT NOT NULL DEFAULT 'Bearer',
+  expires_at TEXT,
+  scopes TEXT NOT NULL DEFAULT '',
+  account_info TEXT DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`;
+
+const CREATE_GITHUB_REPOS = `
+CREATE TABLE IF NOT EXISTS github_repos (
+  full_name TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  name TEXT NOT NULL,
+  private INTEGER NOT NULL DEFAULT 0,
+  description TEXT DEFAULT '',
+  is_org INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  permissions TEXT NOT NULL DEFAULT '["code","issues","pull_requests"]',
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`;
+
 export function createTables(db: Database.Database): void {
   db.exec(CREATE_API_KEYS);
   db.exec(CREATE_MANIFESTS);
@@ -71,4 +97,6 @@ export function createTables(db: Database.Database): void {
   }
   db.exec(CREATE_STAGING);
   db.exec(CREATE_AUDIT_LOG);
+  db.exec(CREATE_OAUTH_TOKENS);
+  db.exec(CREATE_GITHUB_REPOS);
 }

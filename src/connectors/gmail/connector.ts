@@ -11,17 +11,26 @@ export interface GmailConnectorConfig {
 export class GmailConnector implements SourceConnector {
   name = 'gmail';
   private gmail: gmail_v1.Gmail;
+  private auth: InstanceType<typeof google.auth.OAuth2>;
   private lastSyncTimestamp?: string;
 
   constructor(config: GmailConnectorConfig) {
-    const auth = new google.auth.OAuth2(config.clientId, config.clientSecret);
+    this.auth = new google.auth.OAuth2(config.clientId, config.clientSecret);
     if (config.accessToken || config.refreshToken) {
-      auth.setCredentials({
+      this.auth.setCredentials({
         access_token: config.accessToken,
         refresh_token: config.refreshToken,
       });
     }
-    this.gmail = google.gmail({ version: 'v1', auth });
+    this.gmail = google.gmail({ version: 'v1', auth: this.auth });
+  }
+
+  /**
+   * Expose the underlying OAuth2 client so callers can listen for
+   * the 'tokens' event (fired when tokens are auto-refreshed).
+   */
+  getAuth(): InstanceType<typeof google.auth.OAuth2> {
+    return this.auth;
   }
 
   async fetch(boundary: SourceBoundary, params?: Record<string, unknown>): Promise<DataRow[]> {

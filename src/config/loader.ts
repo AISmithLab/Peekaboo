@@ -36,11 +36,43 @@ function resolveEnvVarsDeep(obj: unknown): unknown {
 }
 
 /**
- * Load and validate a hub-config.yaml file.
+ * Load and validate a single config file.
  */
 export function loadConfig(configPath: string): HubConfigParsed {
   const raw = readFileSync(configPath, 'utf-8');
   const parsed = parseYaml(raw);
   const resolved = resolveEnvVarsDeep(parsed);
   return hubConfigSchema.parse(resolved);
+}
+
+/**
+ * Load multiple config files, merge their sources, and validate.
+ * Top-level keys (port, encryption_key) are taken from the last file that defines them.
+ */
+export function loadConfigFiles(configPaths: string[]): HubConfigParsed {
+  const merged: Record<string, unknown> = { sources: {} };
+
+  for (const configPath of configPaths) {
+    const raw = readFileSync(configPath, 'utf-8');
+    const parsed = parseYaml(raw) as Record<string, unknown> | null;
+    if (!parsed) continue;
+    const resolved = resolveEnvVarsDeep(parsed) as Record<string, unknown>;
+
+    // Merge sources
+    if (resolved.sources && typeof resolved.sources === 'object') {
+      merged.sources = {
+        ...(merged.sources as Record<string, unknown>),
+        ...(resolved.sources as Record<string, unknown>),
+      };
+    }
+
+    // Merge other top-level keys (port, encryption_key, etc.)
+    for (const [key, value] of Object.entries(resolved)) {
+      if (key !== 'sources') {
+        merged[key] = value;
+      }
+    }
+  }
+
+  return hubConfigSchema.parse(merged);
 }

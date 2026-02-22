@@ -20,6 +20,13 @@ export class GitHubConnector implements SourceConnector {
   }
 
   /**
+   * Update the set of allowed repos without recreating the connector.
+   */
+  updateAllowedRepos(repos: string[]): void {
+    this.allowedRepos = new Set(repos);
+  }
+
+  /**
    * Check if a repo is within the allowed boundary.
    */
   validateAccess(repo: string): boolean {
