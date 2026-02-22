@@ -51,6 +51,43 @@ Propose an outbound action (e.g., draft email). The action is staged for the dat
 Draft a reply to Alice's Q4 report email thanking her for the numbers.
 ```
 
+## Direct API Fallback
+
+If the tools above are not available, you can call the Peekaboo API directly via HTTP.
+
+**Credentials:** Read `~/.peekaboo/credentials.json` to get `hubUrl` and `apiKey`.
+
+**Pull data:**
+```bash
+curl -X POST <hubUrl>/app/v1/pull \
+  -H "Authorization: Bearer <apiKey>" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "gmail", "purpose": "reason for pulling data"}'
+```
+
+**Propose an action:**
+```bash
+curl -X POST <hubUrl>/app/v1/propose \
+  -H "Authorization: Bearer <apiKey>" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "gmail", "action_type": "draft_email", "action_data": {"to": "...", "subject": "...", "body": "..."}, "purpose": "reason for action"}'
+```
+
+## Troubleshooting
+
+If calls fail, check if the Peekaboo server is running:
+```bash
+curl <hubUrl>/health
+```
+
+If the server is not running, find and start it:
+```bash
+# Check where Peekaboo is installed
+cat ~/.peekaboo/credentials.json   # look at hubDir
+# Start the server
+cd <hubDir> && node dist/index.js
+```
+
 ## Setup
 
 The install hook bootstraps Peekaboo automatically:
