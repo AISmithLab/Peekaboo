@@ -8,6 +8,7 @@ import type { TokenManager } from './token-manager.js';
 import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
+import { generateCodeVerifier, computeCodeChallenge, getGmailCredentials, getGitHubCredentials } from './pkce.js';
 
 interface OAuthDeps {
   db: Database.Database;
@@ -16,8 +17,8 @@ interface OAuthDeps {
   tokenManager: TokenManager;
 }
 
-// CSRF state store: state -> { source, createdAt }
-const pendingStates = new Map<string, { source: string; createdAt: number }>();
+// CSRF state store: state -> { source, createdAt, codeVerifier }
+const pendingStates = new Map<string, { source: string; createdAt: number; codeVerifier: string }>();
 
 // Clean up stale states every 5 minutes
 const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
@@ -52,14 +53,16 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
       return c.redirect('/?oauth_error=gmail_not_configured');
     }
 
-    const clientId = gmailConfig.owner_auth.clientId;
-    const clientSecret = gmailConfig.owner_auth.clientSecret;
+    const { clientId, clientSecret } = getGmailCredentials(deps.config);
     if (!clientId || !clientSecret) {
       return c.redirect('/?oauth_error=gmail_missing_credentials');
     }
 
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = computeCodeChallenge(codeVerifier);
+
     const state = randomBytes(32).toString('hex');
-    pendingStates.set(state, { source: 'gmail', createdAt: Date.now() });
+    pendingStates.set(state, { source: 'gmail', createdAt: Date.now(), codeVerifier });
 
     const oauth2Client = new google.auth.OAuth2(
       clientId,
@@ -72,6 +75,9 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
       prompt: 'consent',
       scope: GMAIL_SCOPES,
       state,
+      code_challenge: codeChallenge,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      code_challenge_method: 'S256' as any,
     });
 
     return c.redirect(authUrl);
@@ -95,11 +101,10 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     if (!pending || pending.source !== 'gmail') {
       return c.redirect('/?oauth_error=invalid_state');
     }
+    const { codeVerifier } = pending;
     pendingStates.delete(state);
 
-    const gmailConfig = deps.config.sources.gmail;
-    const clientId = gmailConfig?.owner_auth.clientId ?? '';
-    const clientSecret = gmailConfig?.owner_auth.clientSecret ?? '';
+    const { clientId, clientSecret } = getGmailCredentials(deps.config);
 
     const oauth2Client = new google.auth.OAuth2(
       clientId,
@@ -108,8 +113,8 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     );
 
     try {
-      // Exchange code for tokens
-      const { tokens } = await oauth2Client.getToken(code);
+      // Exchange code for tokens (with PKCE code_verifier)
+      const { tokens } = await oauth2Client.getToken({ code, codeVerifier });
       console.log('Gmail OAuth tokens received:', {
         has_access_token: !!tokens.access_token,
         has_refresh_token: !!tokens.refresh_token,
@@ -190,19 +195,24 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
       return c.redirect('/?oauth_error=github_not_configured');
     }
 
-    const clientId = githubConfig.owner_auth.clientId;
+    const { clientId } = getGitHubCredentials(deps.config);
     if (!clientId) {
       return c.redirect('/?oauth_error=github_missing_credentials');
     }
 
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = computeCodeChallenge(codeVerifier);
+
     const state = randomBytes(32).toString('hex');
-    pendingStates.set(state, { source: 'github', createdAt: Date.now() });
+    pendingStates.set(state, { source: 'github', createdAt: Date.now(), codeVerifier });
 
     const redirectUri = `${getBaseUrl(deps.config)}/oauth/github/callback`;
     const authUrl =
       `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&state=${state}`;
+      `&state=${state}` +
+      `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+      `&code_challenge_method=S256`;
 
     return c.redirect(authUrl);
   });
@@ -224,14 +234,14 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     if (!pending || pending.source !== 'github') {
       return c.redirect('/?oauth_error=invalid_state');
     }
+    const { codeVerifier } = pending;
     pendingStates.delete(state);
 
     const githubConfig = deps.config.sources.github;
-    const clientId = githubConfig?.owner_auth.clientId ?? '';
-    const clientSecret = githubConfig?.owner_auth.clientSecret ?? '';
+    const { clientId, clientSecret } = getGitHubCredentials(deps.config);
 
     try {
-      // Exchange code for token
+      // Exchange code for token (with PKCE code_verifier)
       const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
         method: 'POST',
         headers: {
@@ -242,6 +252,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
           client_id: clientId,
           client_secret: clientSecret,
           code,
+          code_verifier: codeVerifier,
         }),
       });
 

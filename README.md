@@ -44,8 +44,8 @@ The agent has **no Gmail credentials**. It can only access email through Peekabo
 
 ```
 🔑 Keys stored in hub-config.yaml (never exposed to agent):
-   ├── Gmail OAuth client ID + client secret
-   └── Gmail OAuth refresh token (obtained during setup)
+   ├── Gmail OAuth client ID + client secret (configured by owner)
+   └── Gmail OAuth refresh token (obtained during PKCE OAuth flow)
 
 🔑 Keys stored in .env (never exposed to agent):
    └── Peekaboo master encryption secret (PEEKABOO_SECRET)
@@ -65,7 +65,7 @@ The agent has **no Gmail credentials**. It can only access email through Peekabo
 
 ```
 1. Agent calls POST /app/v1/pull with purpose: "Find Q4 report emails"
-2. Hub verifies API key → resolves access policy → fetches from Gmail API using owner's OAuth token
+2. Hub verifies API key → resolves access policy → fetches from Gmail API using owner's OAuth token (obtained via PKCE)
 3. Hub filters fields (keep title, body, labels), redacts SSNs in body
 4. Agent receives filtered, redacted data. Never sees sender identity or raw SSNs.
 
@@ -212,6 +212,7 @@ Actions are staged for owner review — not executed until approved via the GUI.
 ## Documentation
 
 - [Setup Guide](docs/SETUP.md) — install and run Peekaboo (ClawHub or from source)
+- [OAuth Setup](docs/OAUTH-SETUP.md) — OAuth credential configuration (uses PKCE for secure authorization)
 - [Development Guide](docs/DEVELOPMENT.md) — for contributors: codebase structure, how to add connectors and operators, demo data, and testing
 - [Design Doc](docs/architecture-design/design.md) — full architecture and design rationale
 - [Implementation Plan](docs/architecture-design/implementationplan.md) — step-by-step build plan

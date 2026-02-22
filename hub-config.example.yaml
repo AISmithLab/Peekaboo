@@ -1,17 +1,21 @@
-# Peekaboo configuration — see docs/oauth-setup.md for how to get credentials
+# Peekaboo configuration
+# OAuth credentials are optional — Peekaboo ships with default credentials
+# and uses PKCE for secure authorization. See docs/OAUTH-SETUP.md for details.
 sources:
   gmail:
     enabled: true
     owner_auth:
       type: oauth2
-      clientId: "${GMAIL_CLIENT_ID}"
-      clientSecret: "${GMAIL_CLIENT_SECRET}"
+      # Uncomment to use your own OAuth app:
+      # clientId: "your-client-id.apps.googleusercontent.com"
+      # clientSecret: "your-client-secret"
 
   github:
     enabled: true
     owner_auth:
       type: github_app
-      clientId: "${GITHUB_APP_CLIENT_ID}"
-      clientSecret: "${GITHUB_APP_CLIENT_SECRET}"
+      # Uncomment to use your own OAuth app:
+      # clientId: "your-github-client-id"
+      # clientSecret: "your-github-client-secret"
 
 port: 3000

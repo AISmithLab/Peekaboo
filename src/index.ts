@@ -6,6 +6,7 @@ import { startServer } from './server/server.js';
 import { GmailConnector } from './connectors/gmail/connector.js';
 import { GitHubConnector } from './connectors/github/connector.js';
 import { TokenManager } from './auth/token-manager.js';
+import { getGmailCredentials } from './auth/pkce.js';
 import type { ConnectorRegistry } from './connectors/types.js';
 
 const configPath = process.argv[2] ?? resolve('hub-config.yaml');
@@ -31,9 +32,7 @@ const connectorRegistry: ConnectorRegistry = new Map();
 
 // Try to restore Gmail connector from stored OAuth tokens, else fall back to config
 if (config.sources.gmail?.enabled) {
-  const gmailConfig = config.sources.gmail;
-  const clientId = gmailConfig.owner_auth.clientId ?? '';
-  const clientSecret = gmailConfig.owner_auth.clientSecret ?? '';
+  const { clientId, clientSecret } = getGmailCredentials(config);
 
   const storedToken = tokenManager.getToken('gmail');
   if (storedToken) {

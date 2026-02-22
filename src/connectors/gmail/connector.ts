@@ -33,6 +33,14 @@ export class GmailConnector implements SourceConnector {
     return this.auth;
   }
 
+  /**
+   * Update the access token on the underlying OAuth2 client.
+   * Useful after a manual token refresh.
+   */
+  setAccessToken(token: string): void {
+    this.auth.setCredentials({ ...this.auth.credentials, access_token: token });
+  }
+
   async fetch(boundary: SourceBoundary, params?: Record<string, unknown>): Promise<DataRow[]> {
     const query = buildGmailQuery(boundary, params);
     const maxResults = (params?.limit as number) ?? 50;

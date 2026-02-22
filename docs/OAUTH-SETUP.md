@@ -1,18 +1,36 @@
-# OAuth Credential Setup
+# OAuth Setup
 
-## Gmail
+## Default Mode (No Setup Required)
 
-### 1. Create a Google Cloud project
+Peekaboo ships with default OAuth credentials and uses **PKCE (Proof Key for Code Exchange)** for secure authorization. No configuration needed — just click "Connect Gmail" or "Connect GitHub" in the Peekaboo GUI.
+
+How it works:
+- Peekaboo generates a cryptographic code verifier and challenge (PKCE S256)
+- Redirects you to Google/GitHub to authorize
+- Exchanges the authorization code + code verifier for tokens locally
+- Tokens are stored encrypted on your machine — they never leave your device
+
+Google Desktop app client secrets are [not confidential](https://developers.google.com/identity/protocols/oauth2/native-app) by design. PKCE adds defense-in-depth against authorization code interception.
+
+---
+
+## Advanced: Using Your Own OAuth App
+
+If you prefer to use your own OAuth app credentials (e.g., for branding, higher rate limits, or organizational policies), you can provide them in `hub-config.yaml`. When custom credentials are present, Peekaboo uses them instead of the defaults. PKCE is always applied regardless.
+
+### Gmail
+
+#### 1. Create a Google Cloud project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or select an existing one)
 
-### 2. Enable the Gmail API
+#### 2. Enable the Gmail API
 
 1. Go to **APIs & Services > Library**
 2. Search for **Gmail API** and click **Enable**
 
-### 3. Configure the OAuth consent screen
+#### 3. Configure the OAuth consent screen
 
 1. Go to **APIs & Services > OAuth consent screen**
 2. Choose **External** (or **Internal** if using Google Workspace)
@@ -22,7 +40,7 @@
 4. Add scopes: `gmail.readonly` and `gmail.compose`
 5. Add yourself as a **test user** (required while app is in "Testing" status)
 
-### 4. Create OAuth credentials
+#### 4. Create OAuth credentials
 
 1. Go to **APIs & Services > Credentials**
 2. Click **Create Credentials > OAuth client ID**
@@ -53,9 +71,9 @@ sources:
 
 ---
 
-## GitHub
+### GitHub
 
-### 1. Create a GitHub App
+#### 1. Create a GitHub App
 
 1. Go to [GitHub Settings > Developer settings > GitHub Apps](https://github.com/settings/apps)
 2. Click **New GitHub App**
@@ -67,7 +85,7 @@ sources:
    - Uncheck **Enable Device Flow** (not needed)
    - Uncheck **Webhook > Active** (not needed)
 
-### 2. Set permissions
+#### 2. Set permissions
 
 Under **Repository permissions**:
 - Contents: **Read & write**
@@ -75,13 +93,13 @@ Under **Repository permissions**:
 - Pull requests: **Read & write**
 - Issues: **Read-only**
 
-### 3. Generate credentials
+#### 3. Generate credentials
 
 1. Click **Create GitHub App**
 2. Note the **Client ID** (shown at top of the app page)
 3. Click **Generate a new client secret** — copy it immediately
 
-### 4. Add to config
+#### 4. Add to config
 
 Add your credentials to `hub-config.yaml` under `sources.github`:
 

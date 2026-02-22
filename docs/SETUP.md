@@ -132,7 +132,7 @@ The skill reads credentials automatically from `~/.peekaboo/credentials.json` �
 
 ### Step 4: Connect Data Sources
 
-Open `http://localhost:3000` in your browser. Connect Gmail and GitHub via OAuth.
+Open `http://localhost:3000` in your browser. No OAuth credentials needed — Peekaboo ships with default credentials and uses PKCE for secure authorization. Just click Connect.
 
 #### Connecting Gmail
 
@@ -145,8 +145,6 @@ Open `http://localhost:3000` in your browser. Connect Gmail and GitHub via OAuth
    - **Redaction** — redact SSNs, credit card numbers, phone numbers
    - **Outbound actions** — allow/disallow draft proposals
 
-**Note:** You need a Google Cloud project with the Gmail API enabled and OAuth credentials configured. See [Google's guide](https://developers.google.com/gmail/api/quickstart/nodejs) for creating OAuth credentials. Set the redirect URI to `http://localhost:3000/oauth/gmail/callback`.
-
 #### Connecting GitHub
 
 1. Click the **GitHub** tab, then **Connect GitHub**
@@ -158,6 +156,8 @@ To set up the agent's GitHub account:
 2. In the Peekaboo GUI, enter the agent's GitHub username
 3. Peekaboo uses your (the owner's) OAuth token to add the agent as a collaborator on the repos you select
 4. The agent uses its own credentials (fine-grained PAT) to interact with GitHub directly
+
+**Advanced:** To use your own OAuth app instead of the defaults, see [OAUTH-SETUP.md](./OAUTH-SETUP.md).
 
 ### Step 5: Verify
 
