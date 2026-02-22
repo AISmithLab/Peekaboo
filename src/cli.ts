@@ -61,6 +61,23 @@ export function readCredentials(): Credentials | null {
 
 // --- Init ---
 
+const OAUTH_CREDENTIALS_URL = 'https://peekaboohub-config.s3.us-east-2.amazonaws.com/credentials.json';
+
+interface OAuthCredentials {
+  google?: { clientId: string; clientSecret: string };
+  github?: { clientId: string; clientSecret: string };
+}
+
+async function fetchDefaultCredentials(): Promise<OAuthCredentials | null> {
+  try {
+    const res = await fetch(OAUTH_CREDENTIALS_URL, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    return await res.json() as OAuthCredentials;
+  } catch {
+    return null;
+  }
+}
+
 export interface InitResult {
   secret: string;
   apiKey: string;
@@ -68,6 +85,7 @@ export interface InitResult {
   configPath: string;
   envPath: string;
   credentialsPath: string;
+  credentialsFetched: boolean;
 }
 
 export interface InitOptions {
@@ -82,7 +100,7 @@ export interface InitOptions {
  * initializes the database, creates the first API key,
  * and writes credentials to ~/.peekaboo/credentials.json.
  */
-export function init(targetDir?: string, options?: InitOptions): InitResult {
+export async function init(targetDir?: string, options?: InitOptions): Promise<InitResult> {
   const dir = targetDir ?? process.cwd();
   const envPath = resolve(dir, '.env');
   const configPath = resolve(dir, 'hub-config.yaml');
@@ -99,17 +117,57 @@ export function init(targetDir?: string, options?: InitOptions): InitResult {
   // Write .env
   writeFileSync(envPath, `PEEKABOO_SECRET=${secret}\n`, 'utf-8');
 
-  // Write minimal hub-config.yaml
+  // Fetch default OAuth credentials from S3
+  const oauthCreds = await fetchDefaultCredentials();
+  const credentialsFetched = oauthCreds !== null;
+
+  // Write hub-config.yaml
   const port = options?.port ?? 3000;
-  const configContent = [
-    '# Peekaboo configuration — add OAuth credentials here',
-    '# See docs/oauth-setup.md for setup instructions',
-    '',
-    'sources: {}',
-    '',
-    `port: ${port}`,
-    '',
-  ].join('\n');
+  let configContent: string;
+
+  if (oauthCreds) {
+    const lines = [
+      '# Peekaboo configuration',
+      '',
+      'sources:',
+    ];
+
+    if (oauthCreds.google) {
+      lines.push(
+        '  gmail:',
+        '    enabled: true',
+        '    owner_auth:',
+        '      type: oauth2',
+        `      clientId: "${oauthCreds.google.clientId}"`,
+        `      clientSecret: "${oauthCreds.google.clientSecret}"`,
+      );
+    }
+
+    if (oauthCreds.github) {
+      lines.push(
+        '  github:',
+        '    enabled: true',
+        '    owner_auth:',
+        '      type: github_app',
+        `      clientId: "${oauthCreds.github.clientId}"`,
+        `      clientSecret: "${oauthCreds.github.clientSecret}"`,
+      );
+    }
+
+    lines.push('', `port: ${port}`, '');
+    configContent = lines.join('\n');
+  } else {
+    configContent = [
+      '# Peekaboo configuration — add OAuth credentials here',
+      '# See docs/oauth-setup.md for setup instructions',
+      '',
+      'sources: {}',
+      '',
+      `port: ${port}`,
+      '',
+    ].join('\n');
+  }
+
   writeFileSync(configPath, configContent, 'utf-8');
 
   // Initialize database
@@ -130,7 +188,7 @@ export function init(targetDir?: string, options?: InitOptions): InitResult {
   const hubUrl = `http://localhost:${port}`;
   writeCredentials({ hubUrl, apiKey: rawKey, hubDir: dir });
 
-  return { secret, apiKey: rawKey, dbPath, configPath, envPath, credentialsPath: CREDENTIALS_PATH };
+  return { secret, apiKey: rawKey, dbPath, configPath, envPath, credentialsPath: CREDENTIALS_PATH, credentialsFetched };
 }
 
 // --- Start / Stop / Status ---
@@ -262,16 +320,20 @@ if (isDirectRun) {
   if (command === 'init') {
     const appName = process.argv[3] ?? 'default';
     try {
-      const result = init(undefined, { appName });
+      const result = await init(undefined, { appName });
       console.log('\n  Peekaboo initialized successfully!\n');
       console.log(`  .env created            ${result.envPath}`);
       console.log(`  hub-config.yaml created  ${result.configPath}`);
       console.log(`  Database created         ${result.dbPath}`);
       console.log(`  Credentials saved        ${result.credentialsPath}`);
       console.log('\n  Next steps:');
-      console.log('    1. Add OAuth credentials to hub-config.yaml (see docs/oauth-setup.md)');
-      console.log('    2. Start the server:  npx peekaboo start');
-      console.log('    3. Open the GUI:      http://localhost:3000\n');
+      if (result.credentialsFetched) {
+        console.log('    Default OAuth credentials configured. Just click Connect in the GUI.');
+      } else {
+        console.log('    Add OAuth credentials to hub-config.yaml — see docs/oauth-setup.md');
+      }
+      console.log('    Start the server:  npx peekaboo start');
+      console.log('    Open the GUI:      http://localhost:3000\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
