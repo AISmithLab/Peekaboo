@@ -268,8 +268,13 @@ if (isDirectRun) {
   } else if (command === 'demo-load') {
     try {
       const creds = readCredentials();
-      const hubDir = creds?.hubDir ?? process.cwd();
+      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'peekaboo.db'))
+        ? creds.hubDir
+        : process.cwd();
       const dbPath = resolve(hubDir, 'peekaboo.db');
+      if (!existsSync(dbPath)) {
+        throw new Error(`No peekaboo.db found at ${dbPath}. Run 'npx peekaboo init' first.`);
+      }
       const db = getDb(dbPath);
       const result = loadDemoData(db);
       db.close();
@@ -288,8 +293,13 @@ if (isDirectRun) {
   } else if (command === 'demo-unload') {
     try {
       const creds = readCredentials();
-      const hubDir = creds?.hubDir ?? process.cwd();
+      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'peekaboo.db'))
+        ? creds.hubDir
+        : process.cwd();
       const dbPath = resolve(hubDir, 'peekaboo.db');
+      if (!existsSync(dbPath)) {
+        throw new Error(`No peekaboo.db found at ${dbPath}. Run 'npx peekaboo init' first.`);
+      }
       const db = getDb(dbPath);
       const result = unloadDemoData(db);
       db.close();
