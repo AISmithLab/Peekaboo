@@ -375,7 +375,7 @@ function getIndexHtml(): string {
 
     /* ---- Main content area ---- */
     .main-content { flex: 1; margin-left: var(--sidebar-width); overflow-y: auto; }
-    .content { max-width: 1100px; padding: 32px; }
+    .content { max-width: 1400px; margin: 0 auto; padding: 32px 40px; }
 
     /* ---- Cards ---- */
     .card { background: var(--card); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
@@ -496,10 +496,10 @@ function getIndexHtml(): string {
     .resolved-row:last-child { border-bottom: none; }
 
     /* ---- Gmail 2-col grid ---- */
-    .gmail-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+    .gmail-grid { display: grid; grid-template-columns: 1fr 380px; gap: 24px; }
     .gmail-grid-left { min-width: 0; }
     .gmail-grid-right { min-width: 0; }
-    @media (max-width: 900px) { .gmail-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 1000px) { .gmail-grid { grid-template-columns: 1fr; } }
 
     /* ---- Summary stats bar ---- */
     .summary-bar { display: flex; align-items: center; gap: 20px; padding: 10px 16px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
