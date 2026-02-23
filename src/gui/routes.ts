@@ -5,7 +5,9 @@ import type Database from 'better-sqlite3';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type { TokenManager } from '../auth/token-manager.js';
+import { google } from 'googleapis';
 import { AuditLog } from '../audit/log.js';
+import { GmailConnector } from '../connectors/gmail/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
 import { Octokit } from 'octokit';
 
@@ -29,7 +31,7 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
   // --- GUI API endpoints ---
 
   // Get all sources and their status
-  app.get('/api/sources', (c) => {
+  app.get('/api/sources', async (c) => {
     const sources = Object.entries(deps.config.sources).map(([name, config]) => ({
       name,
       enabled: config.enabled,
@@ -38,6 +40,22 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       connected: deps.tokenManager.hasToken(name),
       accountInfo: deps.tokenManager.getAccountInfo(name),
     }));
+
+    // Backfill Gmail account info if empty
+    const gmailSource = sources.find((s) => s.name === 'gmail' && s.connected);
+    if (gmailSource && (!gmailSource.accountInfo || !gmailSource.accountInfo.email)) {
+      const connector = deps.connectorRegistry.get('gmail');
+      if (connector && connector instanceof GmailConnector) {
+        try {
+          const gmailApi = google.gmail({ version: 'v1', auth: connector.getAuth() });
+          const profile = await gmailApi.users.getProfile({ userId: 'me' });
+          const info = { email: profile.data.emailAddress ?? undefined };
+          deps.tokenManager.updateAccountInfo('gmail', info);
+          gmailSource.accountInfo = info;
+        } catch (_) { /* non-fatal */ }
+      }
+    }
+
     return c.json({ ok: true, sources });
   });
 
@@ -307,6 +325,48 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     }
 
     return c.json({ ok: true });
+  });
+
+  // Fetch real emails from connected Gmail account
+  app.get('/api/gmail/emails', async (c) => {
+    const connector = deps.connectorRegistry.get('gmail');
+    if (!connector) {
+      return c.json({ ok: false, error: 'Gmail not connected' }, 401);
+    }
+
+    try {
+      const gmailConfig = deps.config.sources.gmail;
+      const boundary = gmailConfig?.boundary ?? {};
+      const limit = parseInt(c.req.query('limit') ?? '20', 10);
+      const rows = await connector.fetch(boundary, { limit });
+
+      // Map DataRow format to the shape the frontend expects
+      const emails = rows.map((row) => {
+        const d = row.data as Record<string, unknown>;
+        const attachments = d.attachments as Array<{ name: string }> | undefined;
+        return {
+          id: row.source_item_id,
+          from: d.author_email || d.author_name || '',
+          to: Array.isArray(d.participants)
+            ? (d.participants as Array<{ email: string; role: string }>)
+                .filter((p) => p.role === 'to')
+                .map((p) => p.email)
+                .join(', ')
+            : '',
+          subject: d.title || '',
+          snippet: (d.snippet as string) || '',
+          body: d.body || '',
+          date: row.timestamp,
+          labels: Array.isArray(d.labels) ? d.labels : [],
+          hasAttachment: Array.isArray(attachments) && attachments.length > 0,
+        };
+      });
+
+      return c.json({ ok: true, emails });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.json({ ok: false, error: message }, 500);
+    }
   });
 
   return app;
@@ -660,6 +720,9 @@ function getIndexHtml(): string {
       expandedRepos: {},
       expandedEmail: null,
       editingAction: null,
+      realEmails: null,
+      emailsLoading: false,
+      emailsError: null,
     };
     let _saveTimer = null;
 
@@ -691,6 +754,29 @@ function getIndexHtml(): string {
       const gm = state.sources.find(s => s.name === 'gmail');
       if (gm && gm.boundary && gm.boundary.after && !state.gmail.after) {
         state.gmail.after = gm.boundary.after;
+      }
+
+      // Fetch real emails if Gmail is connected
+      if (gm && gm.connected && !state.realEmails && !state.emailsLoading) {
+        state.emailsLoading = true;
+        state.emailsError = null;
+        fetch('/api/gmail/emails?limit=20')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            state.emailsLoading = false;
+            if (data.ok && data.emails) {
+              state.realEmails = data.emails;
+              state.emailsError = null;
+            } else {
+              state.emailsError = data.error || 'Failed to load emails';
+            }
+            render();
+          })
+          .catch(function(err) {
+            state.emailsLoading = false;
+            state.emailsError = err.message || 'Network error';
+            render();
+          });
       }
 
       render();
@@ -842,8 +928,8 @@ function getIndexHtml(): string {
       var gmailAccount = gmail && gmail.accountInfo;
       var accountEmail = gmailAccount && gmailAccount.email ? gmailAccount.email : '';
 
-      // Email visibility logic
-      var emails = DEMO_EMAILS;
+      // Email visibility logic — use real emails when available
+      var emails = state.realEmails || DEMO_EMAILS;
       var visibleEmails = emails.filter(function(em) {
         for (var i = 0; i < s.rules.length; i++) {
           var r = s.rules[i];
@@ -1028,12 +1114,36 @@ function getIndexHtml(): string {
       });
       if (!actionHtml) actionHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No pending actions from agents.</div>';
 
+      // Build agent access preview JSON
+      var previewEmail = visibleEmails.length ? visibleEmails[0] : null;
+      var accessPreviewHtml = '';
+      if (previewEmail) {
+        var previewObj = {};
+        if (showSubject) previewObj.subject = previewEmail.subject;
+        if (showBody) previewObj.body = previewEmail.body && previewEmail.body.length > 120 ? previewEmail.body.substring(0, 120) + '...' : previewEmail.body;
+        if (showSender) previewObj.from = previewEmail.from;
+        if (showRecipients) previewObj.to = previewEmail.to;
+        if (showLabels && previewEmail.labels) previewObj.labels = previewEmail.labels;
+        if (showSnippet && previewEmail.snippet) previewObj.snippet = previewEmail.snippet;
+        if (showAttachments) previewObj.has_attachment = previewEmail.hasAttachment || false;
+        var jsonStr = JSON.stringify(previewObj, null, 2);
+        accessPreviewHtml = '<div class="card" style="padding:0;overflow:hidden">' +
+          '<div style="padding:12px 16px;background:rgba(0,0,0,0.02);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">' +
+            '<span class="font-mono" style="font-size:12px;color:var(--muted)">POST /app/v1/pull</span>' +
+            '<span class="font-mono" style="font-size:12px;color:var(--primary)">' + visibleEmails.length + ' result' + (visibleEmails.length !== 1 ? 's' : '') + '</span>' +
+          '</div>' +
+          '<pre class="font-mono" style="margin:0;padding:16px;font-size:13px;line-height:1.6;overflow-x:auto;color:var(--fg);background:var(--card)">' + escapeHtml(jsonStr) + '</pre>' +
+        '</div>';
+      } else {
+        accessPreviewHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No emails match current rules.</div>';
+      }
+
       return \`
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
           <div style="display:flex;align-items:center;gap:16px">
             <div>
               <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.5px;color:var(--fg)">Gmail</h1>
-              \${accountEmail ? '<p class="font-mono" style="font-size:14px;color:var(--muted);margin-top:2px">' + escapeHtml(accountEmail) + '</p>' : ''}
+              \${accountEmail ? '<p style="font-size:13px;color:var(--muted);margin-top:2px">' + escapeHtml(accountEmail) + '</p>' : ''}
             </div>
             <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--card)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
@@ -1072,8 +1182,14 @@ function getIndexHtml(): string {
                 <span style="color:var(--border)">|</span>
                 <span class="stat">Fields: <strong>\${visibleFieldCount}/\${ALL_FIELDS.length}</strong></span>
                 \${filteredOut ? '<span class="stat stat-accent" style="margin-left:auto">' + filteredOut + ' filtered out</span>' : ''}
+                \${!state.realEmails && gmailConnected && !state.emailsLoading ? '<span style="margin-left:auto;font-size:12px;color:var(--muted);opacity:0.7">Sample data</span>' : ''}
+                \${state.realEmails && gmailConnected ? '<button onclick="refreshEmails()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:4px;padding:2px 10px;font-size:12px;color:var(--muted);cursor:pointer">Refresh</button>' : ''}
               </div>
-              \${emailListHtml || '<p class="empty" style="padding:40px">No emails found.</p>'}
+              \${state.emailsLoading
+                ? '<div style="padding:40px;text-align:center"><p style="color:var(--muted);font-size:14px">Loading emails from Gmail...</p></div>'
+                : state.emailsError
+                  ? '<div style="padding:40px;text-align:center"><p style="color:var(--destructive);font-size:14px">Error: ' + escapeHtml(state.emailsError) + '</p><button class="btn btn-primary" onclick="refreshEmails()" style="margin-top:12px">Retry</button></div>'
+                  : (emailListHtml || '<p class="empty" style="padding:40px">No emails found.</p>')}
             </div>
           </div>
 
@@ -1084,6 +1200,12 @@ function getIndexHtml(): string {
               \${pendingCount ? '<span class="nav-badge">' + pendingCount + '</span>' : ''}
             </div>
             \${actionHtml}
+
+            <div class="action-review-header" style="margin-top:24px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <h2 style="margin:0">Agent Access Preview</h2>
+            </div>
+            \${accessPreviewHtml}
           </div>
         </div>
       \`;
@@ -1589,6 +1711,10 @@ function getIndexHtml(): string {
     async function disconnectSource(source) {
       if (!confirm('Disconnect ' + source + '? You will need to re-authorize.')) return;
       await fetch('/oauth/' + source + '/disconnect', { method: 'POST' });
+      if (source === 'gmail') {
+        state.realEmails = null;
+        state.emailsLoading = false;
+      }
       await fetchData();
     }
 
@@ -1745,6 +1871,12 @@ function getIndexHtml(): string {
     window.applyBulkPerms = applyBulkPerms;
     window.toggleField = toggleField;
     window.toggleEmailExpand = toggleEmailExpand;
+    window.refreshEmails = function() {
+      state.realEmails = null;
+      state.emailsError = null;
+      state.emailsLoading = false;
+      fetchData();
+    };
     window.toggleEditAction = toggleEditAction;
     window.submitPolicy = submitPolicy;
     window.removeRule = removeRule;

@@ -93,6 +93,14 @@ export class TokenManager {
     return JSON.parse(row.account_info);
   }
 
+  updateAccountInfo(source: string, info: Record<string, unknown>): void {
+    this.db
+      .prepare(
+        `UPDATE oauth_tokens SET account_info = ?, updated_at = datetime('now') WHERE source = ?`,
+      )
+      .run(JSON.stringify(info), source);
+  }
+
   deleteToken(source: string): void {
     this.db.prepare('DELETE FROM oauth_tokens WHERE source = ?').run(source);
   }
