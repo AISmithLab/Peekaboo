@@ -10,6 +10,8 @@ import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
 import { Octokit } from 'octokit';
+import { translatePolicy } from '../ai/translate.js';
+import { manifestToRules } from '../ai/manifest-to-rules.js';
 
 interface GuiDeps {
   db: Database.Database;
@@ -369,6 +371,27 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     }
   });
 
+  // --- AI Policy Translation endpoint ---
+  app.post('/api/policy/translate', async (c) => {
+    try {
+      const { text, source } = await c.req.json<{ text: string; source: string }>();
+      if (!text || !source) {
+        return c.json({ ok: false, error: 'MISSING_PARAMS', message: 'text and source are required' }, 400);
+      }
+
+      const result = await translatePolicy(text, source);
+      if (!result.ok) {
+        return c.json(result);
+      }
+
+      const rules = manifestToRules(result.result.manifest);
+      return c.json({ ok: true, rules, rawManifest: result.result.rawManifest });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.json({ ok: false, error: 'SERVER_ERROR', message }, 500);
+    }
+  });
+
   return app;
 }
 
@@ -723,6 +746,7 @@ function getIndexHtml(): string {
       realEmails: null,
       emailsLoading: false,
       emailsError: null,
+      lastManifest: null,
     };
     let _saveTimer = null;
 
@@ -1114,30 +1138,6 @@ function getIndexHtml(): string {
       });
       if (!actionHtml) actionHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No pending actions from agents.</div>';
 
-      // Build agent access preview JSON
-      var previewEmail = visibleEmails.length ? visibleEmails[0] : null;
-      var accessPreviewHtml = '';
-      if (previewEmail) {
-        var previewObj = {};
-        if (showSubject) previewObj.subject = previewEmail.subject;
-        if (showBody) previewObj.body = previewEmail.body && previewEmail.body.length > 120 ? previewEmail.body.substring(0, 120) + '...' : previewEmail.body;
-        if (showSender) previewObj.from = previewEmail.from;
-        if (showRecipients) previewObj.to = previewEmail.to;
-        if (showLabels && previewEmail.labels) previewObj.labels = previewEmail.labels;
-        if (showSnippet && previewEmail.snippet) previewObj.snippet = previewEmail.snippet;
-        if (showAttachments) previewObj.has_attachment = previewEmail.hasAttachment || false;
-        var jsonStr = JSON.stringify(previewObj, null, 2);
-        accessPreviewHtml = '<div class="card" style="padding:0;overflow:hidden">' +
-          '<div style="padding:12px 16px;background:rgba(0,0,0,0.02);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">' +
-            '<span class="font-mono" style="font-size:12px;color:var(--muted)">POST /app/v1/pull</span>' +
-            '<span class="font-mono" style="font-size:12px;color:var(--primary)">' + visibleEmails.length + ' result' + (visibleEmails.length !== 1 ? 's' : '') + '</span>' +
-          '</div>' +
-          '<pre class="font-mono" style="margin:0;padding:16px;font-size:13px;line-height:1.6;overflow-x:auto;color:var(--fg);background:var(--card)">' + escapeHtml(jsonStr) + '</pre>' +
-        '</div>';
-      } else {
-        accessPreviewHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No emails match current rules.</div>';
-      }
-
       return \`
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
           <div style="display:flex;align-items:center;gap:16px">
@@ -1172,8 +1172,14 @@ function getIndexHtml(): string {
           </div>
         </div>
 
+        \${state.lastManifest ? '<div class="card" style="padding:16px;margin-bottom:16px"><label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:8px">Generated Manifest</label><pre class="font-mono" style="white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:13px;color:var(--fg);max-height:200px;overflow-y:auto;margin:0">' + escapeHtml(state.lastManifest) + '</pre></div>' : ''}
+
         <div class="gmail-grid">
           <div class="gmail-grid-left">
+            <div class="action-review-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <h2 style="margin:0">Agent Access Preview</h2>
+            </div>
             <div class="card" style="padding:0;overflow:hidden">
               <div class="email-list-header">
                 <span class="stat">Total: <strong>\${emails.length}</strong></span>
@@ -1195,18 +1201,13 @@ function getIndexHtml(): string {
 
           <div class="gmail-grid-right">
             <div class="action-review-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               <h2 style="margin:0">Agent Action Review</h2>
               \${pendingCount ? '<span class="nav-badge">' + pendingCount + '</span>' : ''}
             </div>
             \${actionHtml}
-
-            <div class="action-review-header" style="margin-top:24px">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <h2 style="margin:0">Agent Access Preview</h2>
-            </div>
-            \${accessPreviewHtml}
           </div>
+        </div>
         </div>
       \`;
     }
@@ -1408,7 +1409,7 @@ function getIndexHtml(): string {
       render();
     }
 
-    function submitPolicy() {
+    function submitPolicyLocal() {
       var text = (state.gmail.accessPolicy || '').trim();
       if (!text) return;
       var lower = text.toLowerCase();
@@ -1498,6 +1499,60 @@ function getIndexHtml(): string {
       state.gmail.accessPolicy = '';
       saveGmail();
       render();
+    }
+    window.submitPolicyLocal = submitPolicyLocal;
+
+    async function submitPolicy() {
+      var text = (state.gmail.accessPolicy || '').trim();
+      if (!text) return;
+
+      // Show loading state on the submit button
+      var btn = document.querySelector('.policy-actions button');
+      var originalText = btn ? btn.textContent : 'Submit Policy';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:6px;"></span>Translating...';
+      }
+
+      try {
+        var resp = await fetch('/api/policy/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: text, source: 'gmail' })
+        });
+        var data = await resp.json();
+
+        if (data.ok) {
+          // Store raw manifest for debug panel
+          state.lastManifest = data.rawManifest || null;
+          // Insert new rules at TOP, dedup
+          var newRules = data.rules || [];
+          newRules.reverse().forEach(function(nr) {
+            var exists = state.gmail.rules.some(function(er) {
+              return er.type === nr.type && er.value === nr.value;
+            });
+            if (!exists) state.gmail.rules.unshift(nr);
+          });
+          state.gmail.accessPolicy = '';
+          saveGmail();
+          render();
+        } else if (data.error === 'UNSUPPORTED_OPERATORS') {
+          alert('We currently do not have operators to support this description. We will add this operator soon.');
+        } else if (data.error === 'NO_API_KEY') {
+          // Fall back to local regex parsing
+          submitPolicyLocal();
+        } else {
+          alert('Policy translation error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        // Network error — fall back to local parsing
+        submitPolicyLocal();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      }
     }
 
     function removeRule(idx) {
