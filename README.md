@@ -1,7 +1,7 @@
 # PersonalDataHub
 
 
-PersonalDataHub is an open-source, self-hosted bridge between your personal data (Gmail, GitHub, etc.) and your AI agents. It connects to your services via OAuth2, and lets agents query them through a simple REST API — all running locally on your machine, with no data sent to third parties. You configure access policies in natural language, filter what agents can see, and review every action they propose before it's executed.
+PersonalDataHub is an open-source, self-hosted data hub between the services that manage your personal data (Gmail, GitHub, etc.) and your AI agents (e.g., OpenClaw). It connects to your services via secure protocols (e.g., OAuth2), and lets agents query them through REST APIs — all running locally on your machine, with no data sent to third parties. You configure access policies in natural language, filter what agents can see, and review every action they propose before it's executed.
 
 ![](architecture.png)
 
@@ -196,6 +196,7 @@ PersonalDataHub is designed to run on **your local machine**. The owner's OAuth 
 - Once data passes through the pipeline and reaches the agent, PersonalDataHub can't control what the agent does with it — network sandboxing at the agent runtime level is the mitigation
 - A host-level compromise (attacker reads `hub-config.yaml` and `.env`) gives access to the owner's OAuth tokens and encryption keys — host-level security (disk encryption, OS access controls) is the owner's responsibility
 - No built-in rate limiting yet (future enhancement)
+- Agents may pretend to be a human user to interact with the hub to override the access, not sure if they are smart enough today (future enhancement).
 
 For the full threat model with attack/mitigation tables for Gmail and GitHub, see [SECURITY.md](docs/SECURITY.md).
 
