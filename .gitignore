@@ -8,5 +8,6 @@ dist/
 .env.local
 hub-config.yaml
 .DS_Store
+.claude/
 coverage/
 *.tsbuildinfo
