@@ -138,3 +138,9 @@ Writing directly (scoped by credential):
 | Agent reads allowed code, then sends it to an external service | Not blocked by PersonalDataHub. The agent has legitimate read access. If it exfiltrates the code, that's outside PersonalDataHub's control. Mitigated by network sandboxing at the agent runtime level. |
 | Someone gives the agent a second PAT with broader access | Not blocked. PersonalDataHub only manages credentials it provisions. Actions through external credentials bypass all controls. |
 | Agent uses its PAT to scrape all issues from `frontend` in a loop | Not blocked. GitHub has its own rate limits (5,000 requests/hour for authenticated users), but PersonalDataHub doesn't add additional throttling. |
+
+## Cross-Cutting Risks
+
+| Attack | Mitigation |
+|---|---|
+| Agent impersonation — An agent with access to the host machine could interact with the GUI to approve its own staged actions or escalate its access. | Low risk today; likely increases as agent autonomy improves. Future mitigation: GUI authentication and out-of-band approval for policy changes. |
