@@ -100,6 +100,7 @@ describe('Demo data', () => {
       config,
       appId: 'test',
       manifestId: row.id,
+      cacheOnly: true,
     });
 
     const result = await executePipeline(manifest, ctx);
@@ -140,6 +141,7 @@ describe('Demo data', () => {
       config,
       appId: 'test',
       manifestId: row.id,
+      cacheOnly: true,
     });
 
     const result = await executePipeline(manifest, ctx);

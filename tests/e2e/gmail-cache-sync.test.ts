@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { setupE2eApp, request, insertManifest, cleanup, makeGmailRows } from './helpers.js';
+import { setupE2eApp, makeConfigWithCache, request, insertManifest, cleanup, makeGmailRows } from './helpers.js';
 import { encryptField } from '../../src/db/encryption.js';
 import type { DataRow } from '../../src/connectors/types.js';
 import type Database from 'better-sqlite3';
@@ -25,32 +25,34 @@ describe('E2E: Gmail Cache/Sync', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    ({ app, db, tmpDir } = setupE2eApp());
+    // Use cache-enabled config so pull reads from DB
+    ({ app, db, tmpDir } = setupE2eApp(undefined, makeConfigWithCache()));
   });
 
   afterEach(() => cleanup(db, tmpDir));
 
   it('store manifest populates cache → subsequent pull served from cache', async () => {
-    // First: use store manifest to cache data
+    // First: use store manifest to cache data (sync pipeline runs with cacheOnly: false)
     insertManifest(db, 'gmail-store', 'gmail', 'Cache emails', STORE_MANIFEST);
 
-    const storeRes = await request(app, 'POST', '/app/v1/pull', {
-      source: 'gmail',
-      purpose: 'Cache emails locally',
-    });
-    expect(storeRes.status).toBe(200);
-    const storeJson = await storeRes.json() as { data: DataRow[] };
-    expect(storeJson.data).toHaveLength(3);
+    // Simulate sync: run the store manifest without cacheOnly so it fetches live
+    const { syncSource } = await import('../../src/sync/scheduler.js');
+    const env = setupE2eApp(undefined, makeConfigWithCache());
+    // Use a fresh setup for sync to avoid cacheOnly on the API path
+    await syncSource(
+      { db, connectorRegistry: env.connectorRegistry, config: env.config, encryptionKey: 'e2e-test-secret' },
+      'gmail',
+    );
+    cleanup(env.db, env.tmpDir);
 
     // Verify cache is populated
     const cached = db.prepare('SELECT COUNT(*) as count FROM cached_data WHERE source = ?').get('gmail') as { count: number };
     expect(cached.count).toBe(3);
 
-    // Now switch to read manifest — should read from cache, not connector
+    // Now switch to read manifest — should read from cache
     db.prepare('DELETE FROM manifests').run();
     insertManifest(db, 'gmail-read', 'gmail', 'Read cached', READ_MANIFEST);
 
-    // The pull should read from cache (connector would return different data if called)
     const readRes = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
       purpose: 'Read from cache',

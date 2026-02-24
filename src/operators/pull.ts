@@ -17,18 +17,12 @@ export const pullOperator: Operator = {
       throw new Error('pull operator requires "source" property');
     }
 
-    // Try cache first
-    const cachedRows = readFromCache(context, source, type);
-    if (cachedRows.length > 0) {
-      return cachedRows;
-    }
-
-    // Cache-only mode: return empty on cache miss (no live fallback)
+    // Cache enabled: read only from local DB, never hit live API
     if (context.cacheOnly) {
-      return [];
+      return readFromCache(context, source, type);
     }
 
-    // Cache miss — fetch from connector
+    // Cache disabled: always fetch live from connector
     const connector = context.connectorRegistry.get(source);
     if (!connector) {
       throw new Error(`No connector registered for source: "${source}"`);

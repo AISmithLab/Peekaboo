@@ -62,6 +62,33 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     return c.json({ ok: true, sources });
   });
 
+  // Toggle cache for a source
+  app.post('/api/sources/:name/cache', async (c) => {
+    const name = c.req.param('name');
+    const body = await c.req.json();
+    const enabled = body.enabled === true;
+
+    const sourceConfig = deps.config.sources[name];
+    if (!sourceConfig) {
+      return c.json({ ok: false, error: `Unknown source: "${name}"` }, 404);
+    }
+
+    if (!sourceConfig.cache) {
+      sourceConfig.cache = { enabled: false, encrypt: true };
+    }
+    sourceConfig.cache.enabled = enabled;
+
+    if (!enabled) {
+      // Cache disabled — purge cached data for this source
+      const deleted = deps.db.prepare('DELETE FROM cached_data WHERE source = ?').run(name);
+      console.log(`[cache] Disabled cache for "${name}", deleted ${deleted.changes} cached rows`);
+    } else {
+      console.log(`[cache] Enabled cache for "${name}"`);
+    }
+
+    return c.json({ ok: true, enabled });
+  });
+
   // Get manifests
   app.get('/api/manifests', (c) => {
     const manifests = deps.db
@@ -819,10 +846,13 @@ function getIndexHtml(): string {
       // Derive rules from active manifest
       await loadActiveManifestRules();
 
-      // Seed gmail time boundary from config
+      // Seed gmail state from config
       const gm = state.sources.find(s => s.name === 'gmail');
       if (gm && gm.boundary && gm.boundary.after && !state.gmail.after) {
         state.gmail.after = gm.boundary.after;
+      }
+      if (gm && gm.cache) {
+        state.gmail.cachingEnabled = gm.cache.enabled;
       }
 
       // Fetch real emails if Gmail is connected
@@ -1180,7 +1210,7 @@ function getIndexHtml(): string {
 
         <div class="gmail-top-row" style="margin-bottom:16px">
           <div class="card" style="padding:20px;display:flex;flex-direction:column">
-            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:10px">Access Policy <span class="save-flash" id="gmail-flash">Saved</span></label>
+            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:10px">Access Policy</label>
             <textarea id="access-policy" rows="3" style="flex:1;border:1px solid var(--input-border);border-radius:6px;padding:10px 12px;font-size:14px;font-family:inherit;resize:none;outline:none;transition:border-color 0.15s;margin-bottom:10px" placeholder="Agents can only access emails that are requesting meetings with me" oninput="state.gmail.accessPolicy=this.value">\${escapeHtml(s.accessPolicy)}</textarea>
             <button id="submit-policy-btn" class="btn btn-primary" onclick="submitPolicy()" style="align-self:flex-start">Submit Policy</button>
           </div>
@@ -1708,8 +1738,14 @@ function getIndexHtml(): string {
     function saveGmail() {
       clearTimeout(_saveTimer);
       _saveTimer = setTimeout(function() {
-        flash('gmail-flash');
-      }, 500);
+        fetch('/api/sources/gmail/cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: state.gmail.cachingEnabled }),
+        }).then(function() {
+          render();
+        });
+      }, 300);
     }
 
     function buildGithubManifest() {

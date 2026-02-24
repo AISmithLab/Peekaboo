@@ -77,13 +77,21 @@ export async function syncSource(deps: SyncDeps, source: string): Promise<void> 
 
 /**
  * Start background sync jobs for all cache-enabled sources.
+ * For sources with cache disabled, deletes any stale cached data.
  * Returns a cleanup function that clears all intervals.
  */
 export function startSyncJobs(deps: SyncDeps): () => void {
   const timers: NodeJS.Timeout[] = [];
 
   for (const [source, sourceConfig] of Object.entries(deps.config.sources)) {
-    if (!sourceConfig.cache?.enabled) continue;
+    if (!sourceConfig.cache?.enabled) {
+      // Cache disabled — purge any leftover cached data for this source
+      const deleted = deps.db.prepare('DELETE FROM cached_data WHERE source = ?').run(source);
+      if (deleted.changes > 0) {
+        console.log(`[sync] Cache disabled for "${source}", deleted ${deleted.changes} cached rows`);
+      }
+      continue;
+    }
 
     const intervalStr = sourceConfig.cache.sync_interval ?? '10m';
     const intervalMs = parseInterval(intervalStr);

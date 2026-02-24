@@ -142,7 +142,7 @@ describe('Pull Operator', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('cache hit: returns from cache without calling connector', async () => {
+  it('cacheOnly + cache hit: returns from cache without calling connector', async () => {
     let connectorCalled = false;
     const connector: SourceConnector = {
       name: 'gmail',
@@ -155,7 +155,7 @@ describe('Pull Operator', () => {
       },
     };
     const registry: ConnectorRegistry = new Map([['gmail', connector]]);
-    const ctx = makeContext(db, registry);
+    const ctx = { ...makeContext(db, registry), cacheOnly: true };
 
     // Pre-populate cache
     const dataStr = encryptField(JSON.stringify({ title: 'Cached Email', body: 'From cache' }), TEST_SECRET);
@@ -167,6 +167,24 @@ describe('Pull Operator', () => {
     expect(connectorCalled).toBe(false);
     expect(result).toHaveLength(1);
     expect((result as DataRow[])[0].data.title).toBe('Cached Email');
+  });
+
+  it('cache disabled: always fetches live even if cache has data', async () => {
+    const liveRows = makeTestRows();
+    const connector = makeMockConnector(liveRows);
+    const registry: ConnectorRegistry = new Map([['gmail', connector]]);
+    const ctx = makeContext(db, registry); // cacheOnly defaults to undefined (disabled)
+
+    // Pre-populate cache with different data
+    const dataStr = encryptField(JSON.stringify({ title: 'Stale Cached Email' }), TEST_SECRET);
+    db.prepare(
+      `INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run('cd_1', 'gmail', 'msg_cached', 'email', '2026-02-20T10:00:00Z', dataStr);
+
+    const result = await pullOperator.execute([], ctx, { source: 'gmail', type: 'email' });
+    // Should return live data, not cached
+    expect(result).toHaveLength(3);
+    expect((result as DataRow[])[0].data.title).toBe('Q4 Report');
   });
 });
 
@@ -352,7 +370,7 @@ describe('Store Operator', () => {
     expect(JSON.parse(decrypted).title).toBe('Version 2');
   });
 
-  it('store + pull: stored rows are returned from cache by pull', async () => {
+  it('store + pull (cacheOnly): stored rows are returned from cache by pull', async () => {
     let connectorCalled = false;
     const connector: SourceConnector = {
       name: 'gmail',
@@ -365,7 +383,7 @@ describe('Store Operator', () => {
       },
     };
     const registry: ConnectorRegistry = new Map([['gmail', connector]]);
-    const ctx = makeContext(db, registry);
+    const ctx = { ...makeContext(db, registry), cacheOnly: true };
 
     const rows = makeTestRows().slice(0, 1);
     await storeOperator.execute(rows, ctx, {});
