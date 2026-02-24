@@ -43,9 +43,16 @@ const sourceConfigSchema = z.object({
   cache: cacheSchema.optional().default({ enabled: false, encrypt: true }),
 });
 
+const aiProviderSchema = z.object({
+  provider: z.string(),
+  api_key: z.string(),
+  model: z.string().optional(),
+});
+
 export const hubConfigSchema = z.object({
   sources: z.record(z.string(), sourceConfigSchema).default({}),
   encryption_key: z.string().optional(),
+  ai: aiProviderSchema.optional(),
   port: z.number().default(3000),
 });
 

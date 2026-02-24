@@ -23,6 +23,19 @@ const dbPath = resolve('pdh.db');
 const db = getDb(dbPath);
 const encryptionKey = config.encryption_key ?? process.env.PDH_ENCRYPTION_KEY ?? 'pdh-default-key';
 
+// Expose AI provider API key from config as env var
+if (config.ai?.api_key) {
+  const envVarMap: Record<string, string> = {
+    anthropic: 'ANTHROPIC_API_KEY',
+    openai: 'OPENAI_API_KEY',
+    google: 'GOOGLE_AI_API_KEY',
+  };
+  const envVar = envVarMap[config.ai.provider];
+  if (envVar && !process.env[envVar]) {
+    process.env[envVar] = config.ai.api_key;
+  }
+}
+
 // Token manager for encrypted OAuth token storage
 const tokenManager = new TokenManager(db, encryptionKey);
 
