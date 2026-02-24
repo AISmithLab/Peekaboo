@@ -103,19 +103,35 @@ export function makeConfig(): HubConfigParsed {
         enabled: true,
         owner_auth: { type: 'oauth2' },
         boundary: { after: '2026-01-01' },
-        cache: { enabled: false, encrypt: true },
+        cache: { enabled: false, encrypt: true, sync_interval: '10m' },
       },
     },
     port: 3000,
   };
 }
 
-export function setupE2eApp(gmailRows?: DataRow[]): {
+export function makeConfigWithCache(): HubConfigParsed {
+  return {
+    sources: {
+      gmail: {
+        enabled: true,
+        owner_auth: { type: 'oauth2' },
+        boundary: { after: '2026-01-01' },
+        cache: { enabled: true, encrypt: true, sync_interval: '10m' },
+      },
+    },
+    port: 3000,
+  };
+}
+
+export function setupE2eApp(gmailRows?: DataRow[], configOverride?: HubConfigParsed): {
   app: Hono;
   db: Database.Database;
   tmpDir: string;
   audit: AuditLog;
   connector: SourceConnector;
+  config: HubConfigParsed;
+  connectorRegistry: ConnectorRegistry;
 } {
   const tmpDir = makeTmpDir();
   const db = getDb(join(tmpDir, 'test.db'));
@@ -127,17 +143,18 @@ export function setupE2eApp(gmailRows?: DataRow[]): {
 
   const connector = makeMockGmailConnector(gmailRows ?? makeGmailRows());
   const registry: ConnectorRegistry = new Map([['gmail', connector]]);
+  const config = configOverride ?? makeConfig();
 
   const app = createServer({
     db,
     connectorRegistry: registry,
-    config: makeConfig(),
+    config,
     encryptionKey: 'e2e-test-secret',
   });
 
   const audit = new AuditLog(db);
 
-  return { app, db, tmpDir, audit, connector };
+  return { app, db, tmpDir, audit, connector, config, connectorRegistry: registry };
 }
 
 export async function request(

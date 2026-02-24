@@ -23,6 +23,11 @@ export const pullOperator: Operator = {
       return cachedRows;
     }
 
+    // Cache-only mode: return empty on cache miss (no live fallback)
+    if (context.cacheOnly) {
+      return [];
+    }
+
     // Cache miss — fetch from connector
     const connector = context.connectorRegistry.get(source);
     if (!connector) {

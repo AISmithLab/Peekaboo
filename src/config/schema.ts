@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const cacheSchema = z.object({
   enabled: z.boolean().default(false),
-  sync_interval: z.string().optional(),
+  sync_interval: z.string().default('10m'),
   ttl: z.string().optional(),
   encrypt: z.boolean().default(true),
 });

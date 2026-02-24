@@ -122,6 +122,26 @@ describe('Pull Operator', () => {
     expect((result as DataRow[])[0].data.title).toBe('Q4 Report');
   });
 
+  it('cacheOnly: returns empty on cache miss, connector never called', async () => {
+    let connectorCalled = false;
+    const connector: SourceConnector = {
+      name: 'gmail',
+      async fetch() {
+        connectorCalled = true;
+        return makeTestRows();
+      },
+      async executeAction() {
+        return { success: true, message: 'done' };
+      },
+    };
+    const registry: ConnectorRegistry = new Map([['gmail', connector]]);
+    const ctx = { ...makeContext(db, registry), cacheOnly: true };
+
+    const result = await pullOperator.execute([], ctx, { source: 'gmail', type: 'email' });
+    expect(connectorCalled).toBe(false);
+    expect(result).toHaveLength(0);
+  });
+
   it('cache hit: returns from cache without calling connector', async () => {
     let connectorCalled = false;
     const connector: SourceConnector = {

@@ -9,6 +9,7 @@ export interface PipelineContext {
   appId: string;
   manifestId: string;
   encryptionKey?: string;
+  cacheOnly?: boolean;
 }
 
 export type OperatorResult = DataRow[] | ActionResult | void;

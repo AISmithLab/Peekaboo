@@ -83,6 +83,9 @@ export function createAppApi(deps: AppApiDeps): Hono<Env> {
       }
     }
 
+    const sourceConfig = deps.config.sources[source];
+    const cacheEnabled = sourceConfig?.cache?.enabled === true;
+
     const ctx = createPipelineContext({
       db: deps.db,
       connectorRegistry: deps.connectorRegistry,
@@ -90,6 +93,7 @@ export function createAppApi(deps: AppApiDeps): Hono<Env> {
       appId: apiKey.id,
       manifestId: manifest.id,
       encryptionKey: deps.encryptionKey,
+      cacheOnly: cacheEnabled,
     });
 
     const result = await executePipeline(parsed, ctx);

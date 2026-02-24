@@ -8,6 +8,7 @@ import { GitHubConnector } from './connectors/github/connector.js';
 import { TokenManager } from './auth/token-manager.js';
 import { getGmailCredentials } from './auth/pkce.js';
 import type { ConnectorRegistry } from './connectors/types.js';
+import { startSyncJobs } from './sync/scheduler.js';
 
 const configPath = process.argv[2] ?? resolve('hub-config.yaml');
 
@@ -105,3 +106,4 @@ if (config.sources.github?.enabled) {
 }
 
 startServer({ db, connectorRegistry, config, encryptionKey, tokenManager });
+startSyncJobs({ db, connectorRegistry, config, encryptionKey });

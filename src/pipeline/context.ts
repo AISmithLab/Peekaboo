@@ -10,6 +10,7 @@ export function createPipelineContext(opts: {
   appId: string;
   manifestId: string;
   encryptionKey?: string;
+  cacheOnly?: boolean;
 }): PipelineContext {
   return {
     db: opts.db,
@@ -18,5 +19,6 @@ export function createPipelineContext(opts: {
     appId: opts.appId,
     manifestId: opts.manifestId,
     encryptionKey: opts.encryptionKey,
+    cacheOnly: opts.cacheOnly,
   };
 }
