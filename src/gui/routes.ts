@@ -724,7 +724,7 @@ function getIndexHtml(): string {
     let state = {
       sources: [], manifests: [], keys: [], staging: [], audit: [],
       gmail: {
-        accessPolicy: '',
+        accessPolicy: 'Agents can only access emails from yesterday onward',
         cachingEnabled: false,
         rules: [
           { type: 'time', enabled: true, value: '2024-01-01' },

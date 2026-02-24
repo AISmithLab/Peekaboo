@@ -1,20 +1,29 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { translatePolicy } from './translate.js';
 
 describe('translatePolicy', () => {
-  const originalEnv = process.env.ANTHROPIC_API_KEY;
+  const savedKeys = {
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    GOOGLE_AI_API_KEY: process.env.GOOGLE_AI_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  };
+
+  function clearAllKeys() {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GOOGLE_AI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+  }
 
   afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env.ANTHROPIC_API_KEY = originalEnv;
-    } else {
-      delete process.env.ANTHROPIC_API_KEY;
+    for (const [key, val] of Object.entries(savedKeys)) {
+      if (val !== undefined) process.env[key] = val;
+      else delete process.env[key];
     }
     vi.restoreAllMocks();
   });
 
-  it('returns NO_API_KEY when env var is missing', async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+  it('returns NO_API_KEY when no provider key is set', async () => {
+    clearAllKeys();
     const result = await translatePolicy('show recent emails', 'gmail');
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -22,7 +31,8 @@ describe('translatePolicy', () => {
     }
   });
 
-  it('returns parsed manifest on valid Claude response', async () => {
+  it('returns parsed manifest on valid Anthropic response', async () => {
+    clearAllKeys();
     process.env.ANTHROPIC_API_KEY = 'test-key';
 
     const manifestDsl = `
@@ -48,7 +58,33 @@ filter_time: filter { field: "timestamp", op: "gt", value: "2025-01-01" }
     }
   });
 
+  it('returns parsed manifest on valid Google response', async () => {
+    clearAllKeys();
+    process.env.GOOGLE_AI_API_KEY = 'test-google-key';
+
+    const manifestDsl = `
+@purpose: "Filter recent emails"
+@graph: pull_emails -> filter_time
+pull_emails: pull { source: "gmail", type: "email" }
+filter_time: filter { field: "timestamp", op: "gt", value: "2025-06-01" }
+`.trim();
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: manifestDsl }] } }],
+      }),
+    } as Response);
+
+    const result = await translatePolicy('show recent emails', 'gmail');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.manifest.operators.size).toBe(2);
+    }
+  });
+
   it('strips markdown fences from response', async () => {
+    clearAllKeys();
     process.env.ANTHROPIC_API_KEY = 'test-key';
 
     const manifestDsl = `@purpose: "Test"
@@ -67,6 +103,7 @@ pull_emails: pull { source: "gmail", type: "email" }`;
   });
 
   it('returns PARSE_ERROR on invalid DSL', async () => {
+    clearAllKeys();
     process.env.ANTHROPIC_API_KEY = 'test-key';
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -84,6 +121,7 @@ pull_emails: pull { source: "gmail", type: "email" }`;
   });
 
   it('returns UNSUPPORTED_OPERATORS for unknown operator types', async () => {
+    clearAllKeys();
     process.env.ANTHROPIC_API_KEY = 'test-key';
 
     const manifestDsl = `
@@ -109,6 +147,7 @@ magic_op: teleport { destination: "moon" }
   });
 
   it('returns API_ERROR on non-ok response', async () => {
+    clearAllKeys();
     process.env.ANTHROPIC_API_KEY = 'test-key';
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({

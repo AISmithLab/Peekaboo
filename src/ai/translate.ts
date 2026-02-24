@@ -46,44 +46,122 @@ export interface TranslateError {
 
 export type TranslateResult = TranslateSuccess | TranslateError;
 
-export async function translatePolicy(text: string, source: string): Promise<TranslateResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return { ok: false, error: 'NO_API_KEY', message: 'ANTHROPIC_API_KEY environment variable is not set' };
+interface ProviderConfig {
+  provider: string;
+  apiKey: string;
+  model: string;
+}
+
+function detectProvider(): ProviderConfig | null {
+  if (process.env.ANTHROPIC_API_KEY) {
+    return { provider: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY, model: 'claude-sonnet-4-20250514' };
   }
+  if (process.env.GOOGLE_AI_API_KEY) {
+    return { provider: 'google', apiKey: process.env.GOOGLE_AI_API_KEY, model: 'gemini-2.0-flash' };
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return { provider: 'openai', apiKey: process.env.OPENAI_API_KEY, model: 'gpt-4o' };
+  }
+  return null;
+}
+
+async function callAnthropic(config: ProviderConfig, userPrompt: string): Promise<string> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Anthropic API returned ${response.status}: ${body}`);
+  }
+
+  const data = (await response.json()) as { content: Array<{ type: string; text: string }> };
+  return data.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
+}
+
+async function callGoogle(config: ProviderConfig, userPrompt: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ parts: [{ text: userPrompt }] }],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Google AI API returned ${response.status}: ${body}`);
+  }
+
+  const data = (await response.json()) as {
+    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
+  };
+  return data.candidates[0]?.content?.parts?.map((p) => p.text).join('\n') ?? '';
+}
+
+async function callOpenAI(config: ProviderConfig, userPrompt: string): Promise<string> {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${config.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: config.model,
+      max_tokens: 1024,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`OpenAI API returned ${response.status}: ${body}`);
+  }
+
+  const data = (await response.json()) as {
+    choices: Array<{ message: { content: string } }>;
+  };
+  return data.choices[0]?.message?.content ?? '';
+}
+
+export async function translatePolicy(text: string, source: string): Promise<TranslateResult> {
+  const config = detectProvider();
+  if (!config) {
+    return { ok: false, error: 'NO_API_KEY', message: 'No AI provider API key configured' };
+  }
+
+  const userPrompt = `Convert this ${source} access policy to manifest DSL:\n\n${text}`;
 
   let rawManifest: string;
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Convert this ${source} access policy to manifest DSL:\n\n${text}`,
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      return { ok: false, error: 'API_ERROR', message: `Claude API returned ${response.status}: ${body}` };
+    if (config.provider === 'anthropic') {
+      rawManifest = await callAnthropic(config, userPrompt);
+    } else if (config.provider === 'google') {
+      rawManifest = await callGoogle(config, userPrompt);
+    } else if (config.provider === 'openai') {
+      rawManifest = await callOpenAI(config, userPrompt);
+    } else {
+      return { ok: false, error: 'API_ERROR', message: `Unknown provider: ${config.provider}` };
     }
-
-    const data = (await response.json()) as { content: Array<{ type: string; text: string }> };
-    rawManifest = data.content
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text)
-      .join('\n');
   } catch (err) {
     return { ok: false, error: 'API_ERROR', message: err instanceof Error ? err.message : 'Unknown fetch error' };
   }
