@@ -70,22 +70,55 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     return c.json({ ok: true, manifests });
   });
 
-  // Create/update manifest
+  // Create manifest (auto-activates, multiple can be active per source)
   app.post('/api/manifests', async (c) => {
     const body = await c.req.json();
-    const { id, source, purpose, raw_text } = body;
+    const { source, purpose, raw_text, name, explanation } = body;
+    const id = `manifest_${randomUUID().slice(0, 12)}`;
 
     deps.db.prepare(`
-      INSERT INTO manifests (id, source, purpose, raw_text, status, updated_at)
-      VALUES (?, ?, ?, ?, 'active', datetime('now'))
-      ON CONFLICT(id) DO UPDATE SET
-        source = excluded.source,
-        purpose = excluded.purpose,
-        raw_text = excluded.raw_text,
-        updated_at = excluded.updated_at
-    `).run(id, source, purpose, raw_text);
+      INSERT INTO manifests (id, name, source, purpose, raw_text, explanation, status, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', datetime('now'))
+    `).run(id, name || purpose, source, purpose, raw_text, explanation || '');
 
-    return c.json({ ok: true, id });
+    return c.json({ ok: true, id, name: name || purpose });
+  });
+
+  // Activate a manifest
+  app.put('/api/manifests/:id/activate', (c) => {
+    const id = c.req.param('id');
+    const row = deps.db.prepare('SELECT source FROM manifests WHERE id = ?').get(id) as { source: string } | undefined;
+    if (!row) return c.json({ ok: false, error: 'Not found' }, 404);
+
+    deps.db.prepare(
+      "UPDATE manifests SET status = 'active', updated_at = datetime('now') WHERE id = ?",
+    ).run(id);
+
+    return c.json({ ok: true });
+  });
+
+  // Deactivate a manifest
+  app.put('/api/manifests/:id/deactivate', (c) => {
+    const id = c.req.param('id');
+    deps.db.prepare(
+      "UPDATE manifests SET status = 'inactive', updated_at = datetime('now') WHERE id = ?",
+    ).run(id);
+    return c.json({ ok: true });
+  });
+
+  // Get parsed rules for a manifest
+  app.get('/api/manifests/:id/rules', (c) => {
+    const id = c.req.param('id');
+    const row = deps.db.prepare('SELECT raw_text FROM manifests WHERE id = ?').get(id) as { raw_text: string } | undefined;
+    if (!row) return c.json({ ok: false, error: 'Not found' }, 404);
+
+    try {
+      const manifest = parseManifest(row.raw_text, id);
+      const rules = manifestToRules(manifest);
+      return c.json({ ok: true, rules });
+    } catch (_) {
+      return c.json({ ok: false, error: 'Parse error' }, 500);
+    }
   });
 
   // Delete manifest
@@ -386,7 +419,7 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       }
 
       const rules = manifestToRules(result.result.manifest);
-      return c.json({ ok: true, rules, rawManifest: result.result.rawManifest });
+      return c.json({ ok: true, rules, rawManifest: result.result.rawManifest, explanation: result.result.explanation });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
       return c.json({ ok: false, error: 'SERVER_ERROR', message }, 500);
@@ -690,10 +723,10 @@ function getIndexHtml(): string {
           <span class="status-dot status-dot-disconnected" id="gmail-dot"></span>
           <span class="nav-badge" id="gmail-badge" style="display:none">0</span>
         </a>
-        <a class="nav-item" data-tab="github" onclick="switchTab('github')">
+        <a class="nav-item disabled">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
           <span class="nav-label">GitHub</span>
-          <span class="status-dot status-dot-disconnected" id="github-dot"></span>
+          <span class="nav-badge-muted">soon</span>
         </a>
         <a class="nav-item disabled">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -741,22 +774,11 @@ function getIndexHtml(): string {
     let state = {
       sources: [], manifests: [], keys: [], staging: [], audit: [],
       gmail: {
-        accessPolicy: 'Agents can only access emails from yesterday onward',
+        accessPolicy: '',
         cachingEnabled: false,
-        rules: [
-          { type: 'time', enabled: true, value: '2024-01-01' },
-          { type: 'hideField', enabled: true, value: 'Body' },
-          { type: 'hideField', enabled: true, value: 'Recipients' },
-          { type: 'hideField', enabled: true, value: 'Attachments' },
-          { type: 'hideField', enabled: false, value: 'Labels' },
-        ],
-        // legacy compat
-        timeEnabled: false, after: '',
-        fieldsEnabled: false, fields: { subject: true, body: true, sender: true, participants: true, labels: true, attachments: false, snippet: false },
-        filterEnabled: false, filterOpen: false,
-        filter: { from: '', to: '', subject: '', hasWords: '', notWords: '', sizeOp: 'greater', sizeVal: '', sizeUnit: 'MB', dateRange: '1 day', dateVal: '', searchIn: 'All Mail', hasAttachment: false },
+        rules: [],
       },
-      github: { repos: {}, repoList: [], reposLoading: false, reposLoaded: false, filterOwner: '', search: '' },
+      github: { repoList: [], reposLoading: false, reposLoaded: false, filterOwner: '', search: '' },
       expandedRepos: {},
       expandedEmail: null,
       editingAction: null,
@@ -793,6 +815,9 @@ function getIndexHtml(): string {
       state.keys = keys.keys || [];
       state.staging = staging.actions || [];
       state.audit = audit.entries || [];
+
+      // Derive rules from active manifest
+      await loadActiveManifestRules();
 
       // Seed gmail time boundary from config
       const gm = state.sources.find(s => s.name === 'gmail');
@@ -873,7 +898,9 @@ function getIndexHtml(): string {
       var ghConnected = github && github.connected;
       var gmailAccount = gmail && gmail.accountInfo;
       var ghAccount = github && github.accountInfo;
-      var activeFields = Object.values(state.gmail.fields).filter(Boolean).length;
+      var hiddenCount = 0;
+      state.gmail.rules.forEach(function(r) { if (r.type === 'hideField' && r.enabled) hiddenCount++; });
+      var activeFields = ALL_FIELDS.length - hiddenCount;
       var enabledRepos = (state.github.repoList || []).filter(function(r) { return r.enabled; }).length;
       var totalRepos = (state.github.repoList || []).length;
       var activeKeys = state.keys.filter(function(k) { return k.enabled; }).length;
@@ -922,17 +949,15 @@ function getIndexHtml(): string {
             <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
           </div>
 
-          <div class="card" style="cursor:pointer" onclick="switchTab('github')">
+          <div class="card" style="opacity:0.6">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:8px">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
                 <span style="font-weight:600;font-size:14px">GitHub</span>
               </div>
-              <span class="status-dot \${ghConnected ? 'status-dot-connected' : 'status-dot-disconnected'}"></span>
+              <span class="nav-badge-muted" style="font-size:12px">soon</span>
             </div>
-            \${ghConnected && ghAccount && ghAccount.login ? '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">@' + ghAccount.login + '</p>' : '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">Not connected</p>'}
-            <span style="font-size:14px;color:var(--muted)">Repos: <strong class="font-mono" style="color:var(--fg)">\${enabledRepos}/\${totalRepos || '—'}</strong> enabled</span>
-            <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
+            <p style="font-size:14px;color:var(--muted);margin-bottom:8px">Coming soon</p>
           </div>
 
           <div class="card" style="cursor:pointer" onclick="switchTab('settings')">
@@ -968,6 +993,8 @@ function getIndexHtml(): string {
       var gmailStaging = realStaging;
       var pendingCount = gmailStaging.filter(function(a) { return a.status === 'pending'; }).length;
 
+      var gmailManifests = (state.manifests || []).filter(function(m) { return m.source === 'gmail'; });
+
       var gmailConnected = gmail && gmail.connected;
       var gmailAccount = gmail && gmail.accountInfo;
       var accountEmail = gmailAccount && gmailAccount.email ? gmailAccount.email : '';
@@ -975,24 +1002,20 @@ function getIndexHtml(): string {
       // Email visibility logic — use real emails when available
       var emails = state.realEmails || DEMO_EMAILS;
       var visibleEmails = emails.filter(function(em) {
+        // Apply whitelist rules from active manifests
         for (var i = 0; i < s.rules.length; i++) {
           var r = s.rules[i];
           if (!r.enabled) continue;
           if (r.type === 'time' && r.value) { if (new Date(em.date) < new Date(r.value)) return false; }
           if (r.type === 'from' && r.value) { if (em.from.indexOf(r.value) === -1) return false; }
           if (r.type === 'subject' && r.value) { if (em.subject.toLowerCase().indexOf(r.value.toLowerCase()) === -1) return false; }
-          if (r.type === 'exclude' && r.value) {
-            var words = r.value.split(',').map(function(w) { return w.trim().toLowerCase(); });
-            var combined = (em.subject + ' ' + em.body).toLowerCase();
-            for (var j = 0; j < words.length; j++) { if (words[j] && combined.indexOf(words[j]) !== -1) return false; }
-          }
           if (r.type === 'attachment') { if (!em.hasAttachment) return false; }
         }
         return true;
       });
       var filteredOut = emails.length - visibleEmails.length;
 
-      // Get hidden fields from rules
+      // Get hidden fields from manifest rules only
       var hiddenFields = [];
       for (var ri = 0; ri < s.rules.length; ri++) {
         if (s.rules[ri].type === 'hideField' && s.rules[ri].enabled) hiddenFields.push(s.rules[ri].value);
@@ -1016,37 +1039,6 @@ function getIndexHtml(): string {
             '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>' +
             'Connect Gmail</button></div>';
       }
-
-      // Build rules list
-      var rulesHtml = '';
-      s.rules.forEach(function(r, idx) {
-        var safe = idx;
-        rulesHtml += '<li style="display:flex;align-items:center;gap:8px;font-size:14px">';
-        rulesHtml += '<input type="checkbox" ' + (r.enabled ? 'checked' : '') + ' onchange="state.gmail.rules[' + idx + '].enabled=this.checked; saveGmail(); render()" style="accent-color:var(--primary);width:14px;height:14px;cursor:pointer;flex-shrink:0">';
-
-        if (r.type === 'time') {
-          rulesHtml += '<span>Only emails after</span>';
-          rulesHtml += '<input type="date" value="' + escapeAttr(r.value || '') + '" onchange="state.gmail.rules[' + idx + '].value=this.value; saveGmail(); render()" class="font-mono" style="font-size:14px;padding:4px 8px;border:1px solid var(--input-border);border-radius:6px;outline:none;width:auto;background:var(--card)' + (!r.enabled ? ';opacity:0.5' : '') + '"' + (!r.enabled ? ' disabled' : '') + '>';
-        } else if (r.type === 'from') {
-          rulesHtml += '<span>Only from</span>';
-          rulesHtml += '<input type="text" value="' + escapeAttr(r.value || '') + '" placeholder="@company.com" oninput="state.gmail.rules[' + idx + '].value=this.value; saveGmail(); render()" class="font-mono" style="font-size:14px;padding:4px 8px;border:1px solid var(--input-border);border-radius:6px;outline:none;width:140px;background:var(--card)">';
-        } else if (r.type === 'subject') {
-          rulesHtml += '<span>Subject contains</span>';
-          rulesHtml += '<input type="text" value="' + escapeAttr(r.value || '') + '" placeholder="keyword" oninput="state.gmail.rules[' + idx + '].value=this.value; saveGmail(); render()" class="font-mono" style="font-size:14px;padding:4px 8px;border:1px solid var(--input-border);border-radius:6px;outline:none;width:130px;background:var(--card)">';
-        } else if (r.type === 'exclude') {
-          rulesHtml += '<span>Exclude emails with</span>';
-          rulesHtml += '<input type="text" value="' + escapeAttr(r.value || '') + '" placeholder="unsubscribe, newsletter" oninput="state.gmail.rules[' + idx + '].value=this.value; saveGmail(); render()" class="font-mono" style="font-size:14px;padding:4px 8px;border:1px solid var(--input-border);border-radius:6px;outline:none;width:160px;background:var(--card)">';
-        } else if (r.type === 'attachment') {
-          rulesHtml += '<span>Only emails with attachments</span>';
-        } else if (r.type === 'hideField') {
-          rulesHtml += '<span>Hide <strong>' + escapeHtml(r.value) + '</strong> field from agents</span>';
-        } else {
-          rulesHtml += '<span>' + escapeHtml(r.label || r.type) + '</span>';
-        }
-
-        rulesHtml += '<button onclick="removeRule(' + idx + ')" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 4px;line-height:1;flex-shrink:0" title="Remove rule">&times;</button>';
-        rulesHtml += '</li>';
-      });
 
       // Build email list
       var emailListHtml = '';
@@ -1193,10 +1185,8 @@ function getIndexHtml(): string {
             <button id="submit-policy-btn" class="btn btn-primary" onclick="submitPolicy()" style="align-self:flex-start">Submit Policy</button>
           </div>
           <div class="card" style="padding:20px;display:flex;flex-direction:column">
-            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:10px">Active Rules <span style="font-weight:400;opacity:0.7">(\${s.rules.length})</span></label>
-            <ul style="list-style:none;display:flex;flex-direction:column;gap:8px;flex:1;max-height:240px;overflow-y:auto;padding-right:4px">
-              \${rulesHtml || '<li style="font-size:14px;color:var(--muted);text-align:center;padding:16px 0">No rules yet. Write a policy and click Submit.</li>'}
-            </ul>
+            <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:14px">Active Rules</label>
+            \${renderActiveRulesPanel(gmailManifests)}
           </div>
         </div>
 
@@ -1217,44 +1207,17 @@ function getIndexHtml(): string {
               '</div>' +
               '<div>' +
                 '<label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:8px">Translated Rules (' + state.lastTranslatedRules.length + ')</label>' +
-                (function() { var rHtml = ''; state.lastTranslatedRules.forEach(function(r) {
-                  var desc = '';
-                  if (r.type === 'time') desc = 'Only emails after <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'from') desc = 'Only from <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'subject') desc = 'Subject contains <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'exclude') desc = 'Exclude emails with <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'attachment') desc = 'Only emails with attachments';
-                  else if (r.type === 'hideField') desc = 'Hide <strong>' + escapeHtml(r.value || '') + '</strong> field from agents';
-                  else desc = escapeHtml(r.type + (r.value ? ': ' + r.value : ''));
-                  rHtml += '<li style="display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">' +
-                    '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0"></span>' +
-                    '<span style="color:var(--fg)">' + desc + '</span>' +
-                    '<code class="font-mono" style="margin-left:auto;font-size:11px;color:var(--muted);background:rgba(0,0,0,0.04);padding:1px 6px;border-radius:3px;flex-shrink:0">' + escapeHtml(r.type) + '</code>' +
-                  '</li>';
-                }); return '<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto">' + rHtml + '</ul>'; })() +
+                renderRulesList(state.lastTranslatedRules) +
               '</div>' +
             '</div>'
             : '<div>' +
                 '<label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:8px">Translated Rules <span style="font-weight:400;opacity:0.7">(Local regex parsing &mdash; no API key)</span></label>' +
-                (function() { var rHtml = ''; state.lastTranslatedRules.forEach(function(r) {
-                  var desc = '';
-                  if (r.type === 'time') desc = 'Only emails after <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'from') desc = 'Only from <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'subject') desc = 'Subject contains <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'exclude') desc = 'Exclude emails with <strong>' + escapeHtml(r.value || '') + '</strong>';
-                  else if (r.type === 'attachment') desc = 'Only emails with attachments';
-                  else if (r.type === 'hideField') desc = 'Hide <strong>' + escapeHtml(r.value || '') + '</strong> field from agents';
-                  else desc = escapeHtml(r.type + (r.value ? ': ' + r.value : ''));
-                  rHtml += '<li style="display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">' +
-                    '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0"></span>' +
-                    '<span style="color:var(--fg)">' + desc + '</span>' +
-                    '<code class="font-mono" style="margin-left:auto;font-size:11px;color:var(--muted);background:rgba(0,0,0,0.04);padding:1px 6px;border-radius:3px;flex-shrink:0">' + escapeHtml(r.type) + '</code>' +
-                  '</li>';
-                }); return '<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto">' + rHtml + '</ul>'; })() +
+                renderRulesList(state.lastTranslatedRules) +
               '</div>'
           ) +
           '</div>' : '') +
         '</div>' : ''}
+
 
         <div class="gmail-grid">
           <div class="gmail-grid-left">
@@ -1473,14 +1436,6 @@ function getIndexHtml(): string {
       \`;
     }
 
-    function toggleField(field) {
-      var idx = state.gmail.selectedFields.indexOf(field);
-      if (idx !== -1) state.gmail.selectedFields.splice(idx, 1);
-      else state.gmail.selectedFields.push(field);
-      saveGmail();
-      render();
-    }
-
     function toggleEmailExpand(emailId) {
       state.expandedEmail = state.expandedEmail === emailId ? null : emailId;
       render();
@@ -1519,20 +1474,6 @@ function getIndexHtml(): string {
       if (subjMatch) newRules.push({ type: 'subject', enabled: true, value: subjMatch[1].trim() });
       if (/meeting|calendar invite|schedule/.test(lower) && !subjMatch) {
         newRules.push({ type: 'subject', enabled: true, value: 'meeting' });
-      }
-
-      // Parse exclusion rules
-      var exclMatch = lower.match(/(?:exclude|ignore|skip|filter out|no)\\s+(.+?)(?:\\s+emails?)?$/);
-      if (exclMatch && !/meeting|calendar/.test(exclMatch[1])) {
-        newRules.push({ type: 'exclude', enabled: true, value: exclMatch[1].replace(/\\s+and\\s+/g, ', ') });
-      }
-      if (/newsletter|spam|marketing|promotion/.test(lower)) {
-        var excl = [];
-        if (/newsletter/.test(lower)) excl.push('newsletter');
-        if (/spam/.test(lower)) excl.push('spam');
-        if (/marketing/.test(lower)) excl.push('marketing');
-        if (/promotion/.test(lower)) excl.push('promotion');
-        if (excl.length) newRules.push({ type: 'exclude', enabled: true, value: excl.join(', ') });
       }
 
       // Parse attachment-only rules
@@ -1610,32 +1551,38 @@ function getIndexHtml(): string {
         var data = await resp.json();
 
         if (data.ok) {
-          // Store raw manifest and rules for debug panel
+          // Save as a new named manifest (auto-activates on server)
+          var manifestName = text.length > 60 ? text.substring(0, 60) + '...' : text;
+          var purposeMatch = (data.rawManifest || '').match(/@purpose:\\s*"([^"]+)"/);
+          await fetch('/api/manifests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source: 'gmail',
+              purpose: purposeMatch ? purposeMatch[1] : text,
+              raw_text: data.rawManifest,
+              name: manifestName,
+              explanation: data.explanation || ''
+            })
+          });
+
+          // Store debug info
           state.lastManifest = data.rawManifest || null;
           state.lastTranslatedRules = data.rules || null;
           state.lastPolicySource = 'ai';
           state.showDebugPanel = true;
-          // Insert new rules at TOP, dedup
-          var newRules = data.rules || [];
-          newRules.reverse().forEach(function(nr) {
-            var exists = state.gmail.rules.some(function(er) {
-              return er.type === nr.type && er.value === nr.value;
-            });
-            if (!exists) state.gmail.rules.unshift(nr);
-          });
           state.gmail.accessPolicy = '';
-          saveGmail();
-          render();
+
+          // Reload manifests and derive rules from the new active one
+          await fetchData();
         } else if (data.error === 'UNSUPPORTED_OPERATORS') {
           alert('We currently do not have operators to support this description. We will add this operator soon.');
         } else if (data.error === 'NO_API_KEY') {
-          // Fall back to local regex parsing
           submitPolicyLocal();
         } else {
           alert('Policy translation error: ' + (data.message || 'Unknown error'));
         }
       } catch (err) {
-        // Network error — fall back to local parsing
         submitPolicyLocal();
       } finally {
         if (btn) {
@@ -1644,6 +1591,51 @@ function getIndexHtml(): string {
         }
       }
     }
+
+    async function loadActiveManifestRules() {
+      var activeManifests = (state.manifests || []).filter(function(m) {
+        return m.source === 'gmail' && m.status === 'active';
+      });
+      if (!activeManifests.length) {
+        state.gmail.rules = [];
+        return;
+      }
+      var allRules = [];
+      for (var i = 0; i < activeManifests.length; i++) {
+        try {
+          var resp = await fetch('/api/manifests/' + activeManifests[i].id + '/rules');
+          var data = await resp.json();
+          if (data.ok && data.rules) {
+            data.rules.forEach(function(r) {
+              r.manifestId = activeManifests[i].id;
+              allRules.push(r);
+            });
+          }
+        } catch (_) {}
+      }
+      state.gmail.rules = allRules;
+    }
+
+    async function activateManifest(id) {
+      await fetch('/api/manifests/' + id + '/activate', { method: 'PUT' });
+      await fetchData();
+    }
+
+    async function deactivateManifest(id) {
+      await fetch('/api/manifests/' + id + '/deactivate', { method: 'PUT' });
+      await fetchData();
+    }
+
+    async function deleteManifest(id) {
+      await fetch('/api/manifests/' + id, { method: 'DELETE' });
+      await fetchData();
+    }
+
+    function toggleManifestPolicy(id, activate) {
+      if (activate) activateManifest(id);
+      else deactivateManifest(id);
+    }
+    window.toggleManifestPolicy = toggleManifestPolicy;
 
     async function applyManifest() {
       var el = document.getElementById('manifest-editor');
@@ -1681,14 +1673,6 @@ function getIndexHtml(): string {
       }
     }
 
-    function removeRule(idx) {
-      if (idx >= 0 && idx < state.gmail.rules.length) {
-        state.gmail.rules.splice(idx, 1);
-        saveGmail();
-        render();
-      }
-    }
-
     async function sendAction(actionId) {
       var editTo = document.getElementById('edit-to-' + actionId);
       if (editTo) {
@@ -1706,64 +1690,18 @@ function getIndexHtml(): string {
       await resolveAction(actionId, 'approve');
     }
 
-    function setAllFields(val) {
-      for (var k in state.gmail.fields) state.gmail.fields[k] = val;
-      if (!state.gmail.fieldsEnabled) state.gmail.fieldsEnabled = true;
-      saveGmail();
-      render();
-    }
-
     // --- Toggle repo expand/collapse ---
     function toggleRepo(repo) {
       state.expandedRepos[repo] = !state.expandedRepos[repo];
       render();
     }
 
-    // --- Generate manifest from Gmail settings and save ---
-    function buildGmailManifest() {
-      var s = state.gmail;
-      var fields = [];
-      var fieldMap = { subject: ['title'], body: ['body'], sender: ['author_name','author_email'], participants: ['participants'], labels: ['labels'], attachments: ['attachments'], snippet: ['snippet'] };
-      for (var k in s.fields) { if (s.fields[k] && fieldMap[k]) fields = fields.concat(fieldMap[k]); }
-      fields.push('url', 'timestamp');
-
-      var allOn = Object.values(s.fields).every(Boolean);
-      var ops = [], graph = [];
-
-      var pullProps = 'source: "gmail", type: "email"';
-      if (s.filterEnabled) {
-        var q = [];
-        if (s.filter.from) q.push('from:' + s.filter.from);
-        if (s.filter.to) q.push('to:' + s.filter.to);
-        if (s.filter.subject) q.push('subject:' + s.filter.subject);
-        if (s.filter.hasWords) q.push(s.filter.hasWords);
-        if (s.filter.notWords) q.push('-{' + s.filter.notWords + '}');
-        if (s.filter.sizeVal) q.push((s.filter.sizeOp === 'greater' ? 'larger:' : 'smaller:') + s.filter.sizeVal + s.filter.sizeUnit);
-        if (s.filter.dateVal) q.push('after:' + s.filter.dateVal.replace(/-/g, '/'));
-        if (s.filter.hasAttachment) q.push('has:attachment');
-        if (q.length) pullProps += ', query: "' + q.join(' ').replace(/"/g, '\\\\"') + '"';
-      }
-      ops.push('pull_emails: pull { ' + pullProps + ' }');
-      graph.push('pull_emails');
-
-      if (s.fieldsEnabled && !allOn) {
-        ops.push('select_fields: select { fields: [' + fields.map(function(f){ return '"'+f+'"'; }).join(', ') + '] }');
-        graph.push('select_fields');
-      }
-
-      var checkedNames = Object.keys(s.fields).filter(function(k){ return s.fields[k]; }).join(', ');
-      return '@purpose: "Gmail access: ' + checkedNames + '"\\n@graph: ' + graph.join(' -> ') + '\\n' + ops.join('\\n');
-    }
+    // Rule toggle/remove is handled at manifest level via toggleManifestPolicy / deleteManifest
 
     function saveGmail() {
       clearTimeout(_saveTimer);
       _saveTimer = setTimeout(function() {
-        var raw = buildGmailManifest();
-        fetch('/api/manifests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: 'gmail-access-control', source: 'gmail', purpose: 'Auto-generated from access control', raw_text: raw })
-        }).then(function() { flash('gmail-flash'); });
+        flash('gmail-flash');
       }, 500);
     }
 
@@ -1902,6 +1840,45 @@ function getIndexHtml(): string {
     function escapeHtml(str) {
       if (!str) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderActiveRulesPanel(manifests) {
+      if (!manifests.length) return '<p style="font-size:13px;color:var(--muted);text-align:center;padding:16px 0">No active rules. Submit a policy to create rules.</p>';
+      var html = '<div style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto">';
+      manifests.forEach(function(m) {
+        var isActive = m.status === 'active';
+        var truncName = m.name && m.name.length > 50 ? m.name.slice(0, 47) + '...' : (m.name || 'Untitled Policy');
+        var safeId = escapeAttr(m.id);
+        html += '<div style="display:flex;align-items:center;gap:10px;font-size:14px;padding:10px 12px;background:var(--bg);border:1px solid ' + (isActive ? 'rgba(15,160,129,0.3)' : 'var(--border)') + ';border-radius:6px;transition:all 0.15s">';
+        html += '<label style="position:relative;display:inline-block;width:36px;height:20px;margin:0;cursor:pointer;flex-shrink:0">';
+        html += '<input type="checkbox" ' + (isActive ? 'checked' : '') + ' onchange="toggleManifestPolicy(&quot;' + safeId + '&quot;, this.checked)" style="opacity:0;width:0;height:0">';
+        html += '<span style="position:absolute;inset:0;background:' + (isActive ? 'var(--primary)' : '#ccc') + ';border-radius:10px;transition:background 0.2s"></span>';
+        html += '<span style="position:absolute;left:' + (isActive ? '18px' : '2px') + ';top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>';
+        html += '</label>';
+        html += '<span style="color:var(--fg);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isActive ? 'opacity:0.5' : '') + '" title="' + escapeAttr(m.name || '') + '">' + escapeHtml(truncName) + '</span>';
+        html += '<button onclick="if(confirm(&quot;Delete this rule?&quot;)){deleteManifest(&quot;' + safeId + '&quot;)}" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);display:flex;align-items:center;flex-shrink:0" title="Delete rule">';
+        html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
+        html += '</button></div>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    function renderRulesList(rules) {
+      var rHtml = ''; rules.forEach(function(r) {
+        var desc = '';
+        if (r.type === 'time') desc = 'Only emails after <strong>' + escapeHtml(r.value || '') + '</strong>';
+        else if (r.type === 'from') desc = 'Only from <strong>' + escapeHtml(r.value || '') + '</strong>';
+        else if (r.type === 'subject') desc = 'Subject contains <strong>' + escapeHtml(r.value || '') + '</strong>';
+        else if (r.type === 'attachment') desc = 'Only emails with attachments';
+        else if (r.type === 'hideField') desc = 'Hide <strong>' + escapeHtml(r.value || '') + '</strong> field from agents';
+        else desc = escapeHtml(r.type + (r.value ? ': ' + r.value : ''));
+        rHtml += '<li style="display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">' +
+          '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0"></span>' +
+          '<span style="color:var(--fg)">' + desc + '</span>' +
+          '<code class="font-mono" style="margin-left:auto;font-size:11px;color:var(--muted);background:rgba(0,0,0,0.04);padding:1px 6px;border-radius:3px;flex-shrink:0">' + escapeHtml(r.type) + '</code>' +
+        '</li>';
+      }); return '<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto">' + rHtml + '</ul>';
     }
 
     function escapeAttr(str) {
@@ -2043,14 +2020,12 @@ function getIndexHtml(): string {
     window.toggleRepo = toggleRepo;
     window.saveGmail = saveGmail;
     window.saveGithub = saveGithub;
-    window.setAllFields = setAllFields;
     window.chk = chk;
     window.fetchGithubRepos = fetchGithubRepos;
     window.toggleRepoEnabled = toggleRepoEnabled;
     window.toggleRepoPerm = toggleRepoPerm;
     window.selectAllOwner = selectAllOwner;
     window.applyBulkPerms = applyBulkPerms;
-    window.toggleField = toggleField;
     window.toggleEmailExpand = toggleEmailExpand;
     window.refreshEmails = function() {
       state.realEmails = null;
@@ -2060,7 +2035,9 @@ function getIndexHtml(): string {
     };
     window.toggleEditAction = toggleEditAction;
     window.submitPolicy = submitPolicy;
-    window.removeRule = removeRule;
+    window.activateManifest = activateManifest;
+    window.deactivateManifest = deactivateManifest;
+    window.deleteManifest = deleteManifest;
     window.sendAction = sendAction;
 
     // Handle OAuth redirect results

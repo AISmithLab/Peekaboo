@@ -1,7 +1,7 @@
 import type { Manifest } from '../manifest/types.js';
 
 export interface UIRule {
-  type: 'time' | 'from' | 'subject' | 'exclude' | 'attachment' | 'hideField';
+  type: 'time' | 'from' | 'subject' | 'attachment' | 'hideField';
   enabled: boolean;
   value?: string;
 }
@@ -33,8 +33,6 @@ export function manifestToRules(manifest: Manifest): UIRule[] {
         rules.push({ type: 'from', enabled: true, value });
       } else if (field === 'title' && filterOp === 'contains' && value) {
         rules.push({ type: 'subject', enabled: true, value });
-      } else if (filterOp === 'neq' && value) {
-        rules.push({ type: 'exclude', enabled: true, value });
       } else if (field === 'attachments' && filterOp === 'gt') {
         rules.push({ type: 'attachment', enabled: true });
       }

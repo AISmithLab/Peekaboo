@@ -1,8 +1,7 @@
 import { parseManifest } from '../manifest/parser.js';
 import { validateManifest } from '../manifest/validator.js';
 import type { Manifest } from '../manifest/types.js';
-
-const KNOWN_OPERATOR_TYPES = new Set(['pull', 'select', 'filter', 'transform', 'stage', 'store']);
+import { KNOWN_OPERATOR_TYPES } from '../operators/registry.js';
 
 const SYSTEM_PROMPT = `You are a manifest DSL generator for a personal data access control system.
 
@@ -15,7 +14,7 @@ op1: operator_type { key: "value", key2: "value2" }
 
 Available operator types and their properties:
 - pull { source: "gmail", type: "email" } — always include this as the first operator
-- filter { field: "...", op: "...", value: "..." } — filter rows. Fields: title, body, author_email, participants, labels, attachments, timestamp, snippet. Ops: eq, neq, contains, gt, lt.
+- filter { field: "...", op: "...", value: "..." } — filter rows. Fields: title, body, author_email, participants, labels, attachments, timestamp, snippet. Ops: eq, contains, gt, lt.
 - select { fields: ["field1", "field2"] } — choose which fields to include. All fields: ["title", "body", "author_email", "participants", "labels", "attachments", "timestamp", "snippet"]
 - transform { kind: "redact", field: "...", pattern: "...", replacement: "..." } — redact sensitive data
 
@@ -24,16 +23,21 @@ Rules:
 - For time-based filters, use filter with field "timestamp", op "gt", and value as ISO date string (YYYY-MM-DD).
 - For sender filters, use filter with field "author_email", op "contains", and value as the email or domain.
 - For subject keyword filters, use filter with field "title", op "contains".
-- For exclusions (exclude newsletters, spam, etc.), use filter with field matching the content, op "neq".
 - For attachment-only, use filter with field "attachments", op "gt", value: "0".
 - Always start the graph with a pull operator.
 - Output ONLY the DSL text, nothing else.`;
+
+const EXPLANATION_PROMPT = `You are given a data access control manifest in DSL format.
+Explain in 1-3 plain English sentences what this manifest does.
+Focus on what data is accessible and what restrictions apply.
+Output ONLY the explanation text, nothing else.`;
 
 export interface TranslateSuccess {
   ok: true;
   result: {
     manifest: Manifest;
     rawManifest: string;
+    explanation: string;
   };
 }
 
@@ -66,82 +70,41 @@ function detectProvider(): ProviderConfig | null {
   return null;
 }
 
-async function callAnthropic(config: ProviderConfig, userPrompt: string): Promise<string> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': config.apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Anthropic API returned ${response.status}: ${body}`);
+async function callProvider(config: ProviderConfig, systemPrompt: string, userPrompt: string): Promise<string> {
+  if (config.provider === 'anthropic') {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: config.model, max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] }),
+    });
+    if (!response.ok) throw new Error(`Anthropic API returned ${response.status}`);
+    const data = (await response.json()) as { content: Array<{ type: string; text: string }> };
+    return data.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  } else if (config.provider === 'google') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system_instruction: { parts: [{ text: systemPrompt }] }, contents: [{ parts: [{ text: userPrompt }] }] }),
+    });
+    if (!response.ok) throw new Error(`Google AI API returned ${response.status}`);
+    const data = (await response.json()) as { candidates: Array<{ content: { parts: Array<{ text: string }> } }> };
+    return data.candidates[0]?.content?.parts?.map((p) => p.text).join('\n') ?? '';
+  } else if (config.provider === 'openai') {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+      body: JSON.stringify({ model: config.model, max_tokens: 256, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }] }),
+    });
+    if (!response.ok) throw new Error(`OpenAI API returned ${response.status}`);
+    const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
+    return data.choices[0]?.message?.content ?? '';
   }
-
-  const data = (await response.json()) as { content: Array<{ type: string; text: string }> };
-  return data.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
+  throw new Error(`Unknown provider: ${config.provider}`);
 }
 
-async function callGoogle(config: ProviderConfig, userPrompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${config.apiKey}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ parts: [{ text: userPrompt }] }],
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Google AI API returned ${response.status}: ${body}`);
-  }
-
-  const data = (await response.json()) as {
-    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
-  };
-  return data.candidates[0]?.content?.parts?.map((p) => p.text).join('\n') ?? '';
-}
-
-async function callOpenAI(config: ProviderConfig, userPrompt: string): Promise<string> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: 1024,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI API returned ${response.status}: ${body}`);
-  }
-
-  const data = (await response.json()) as {
-    choices: Array<{ message: { content: string } }>;
-  };
-  return data.choices[0]?.message?.content ?? '';
+async function generateExplanation(config: ProviderConfig, rawManifest: string): Promise<string> {
+  return callProvider(config, EXPLANATION_PROMPT, `Explain this manifest:\n\n${rawManifest}`);
 }
 
 export async function translatePolicy(text: string, source: string): Promise<TranslateResult> {
@@ -154,15 +117,7 @@ export async function translatePolicy(text: string, source: string): Promise<Tra
 
   let rawManifest: string;
   try {
-    if (config.provider === 'anthropic') {
-      rawManifest = await callAnthropic(config, userPrompt);
-    } else if (config.provider === 'google') {
-      rawManifest = await callGoogle(config, userPrompt);
-    } else if (config.provider === 'openai') {
-      rawManifest = await callOpenAI(config, userPrompt);
-    } else {
-      return { ok: false, error: 'API_ERROR', message: `Unknown provider: ${config.provider}` };
-    }
+    rawManifest = await callProvider(config, SYSTEM_PROMPT, userPrompt);
   } catch (err) {
     return { ok: false, error: 'API_ERROR', message: err instanceof Error ? err.message : 'Unknown fetch error' };
   }
@@ -200,5 +155,11 @@ export async function translatePolicy(text: string, source: string): Promise<Tra
     return { ok: false, error: 'VALIDATION_ERROR', message: errors.map((e) => e.message).join('; ') };
   }
 
-  return { ok: true, result: { manifest, rawManifest } };
+  // Generate plain English explanation (non-fatal if it fails)
+  let explanation = manifest.purpose;
+  try {
+    explanation = await generateExplanation(config, rawManifest);
+  } catch (_) { /* use purpose as fallback */ }
+
+  return { ok: true, result: { manifest, rawManifest, explanation } };
 }

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { getDb } from '../db/db.js';
 import { createServer } from '../server/server.js';
 import { TokenManager } from '../auth/token-manager.js';
@@ -9,12 +8,7 @@ import type { ConnectorRegistry, SourceConnector, ActionResult } from '../connec
 import type { HubConfigParsed } from '../config/schema.js';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
-
-function makeTmpDir(): string {
-  const dir = join(tmpdir(), `pdh-gui-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { makeTmpDir } from '../test-utils.js';
 
 function makeConfig(): HubConfigParsed {
   return {
@@ -77,18 +71,21 @@ describe('GUI Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: 'test-manifest',
         source: 'gmail',
         purpose: 'Test',
         raw_text: '@purpose: "Test"\n@graph: pull\npull: pull { source: "gmail" }',
       }),
     });
     expect(res.status).toBe(200);
+    const createJson = await res.json() as { ok: boolean; id: string };
+    expect(createJson.ok).toBe(true);
+    expect(createJson.id).toMatch(/^manifest_/);
 
     const manifests = await app.request('/api/manifests');
-    const json = await manifests.json() as { manifests: Array<{ id: string }> };
+    const json = await manifests.json() as { manifests: Array<{ id: string; status: string }> };
     expect(json.manifests).toHaveLength(1);
-    expect(json.manifests[0].id).toBe('test-manifest');
+    expect(json.manifests[0].id).toBe(createJson.id);
+    expect(json.manifests[0].status).toBe('active');
   });
 
   it('POST /api/keys generates a new API key', async () => {

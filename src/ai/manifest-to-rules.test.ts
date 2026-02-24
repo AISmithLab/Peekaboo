@@ -40,7 +40,7 @@ f: filter { field: "title", op: "contains", value: "meeting" }
     expect(rules).toContainEqual({ type: 'subject', enabled: true, value: 'meeting' });
   });
 
-  it('converts filter neq → exclude rule', () => {
+  it('ignores filter neq (no longer supported)', () => {
     const m = makeManifest(`
 @purpose: "Test"
 @graph: pull -> f
@@ -48,7 +48,7 @@ pull: pull { source: "gmail", type: "email" }
 f: filter { field: "labels", op: "neq", value: "spam" }
 `);
     const rules = manifestToRules(m);
-    expect(rules).toContainEqual({ type: 'exclude', enabled: true, value: 'spam' });
+    expect(rules).toEqual([]);
   });
 
   it('converts filter attachments gt → attachment rule', () => {

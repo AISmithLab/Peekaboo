@@ -1,16 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync } from 'node:fs';
 import { getDb } from './db.js';
 import { encryptField, decryptField } from './encryption.js';
 import type Database from 'better-sqlite3';
-
-function makeTmpDir(): string {
-  const dir = join(tmpdir(), `pdh-db-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { makeTmpDir } from '../test-utils.js';
 
 describe('Database', () => {
   let tmpDir: string;
@@ -48,7 +42,7 @@ describe('Database', () => {
   it('manifests table has correct columns', () => {
     const cols = db.prepare("PRAGMA table_info('manifests')").all() as { name: string }[];
     const colNames = cols.map((c) => c.name);
-    expect(colNames).toEqual(['id', 'source', 'purpose', 'raw_text', 'status', 'created_at', 'updated_at']);
+    expect(colNames).toEqual(['id', 'name', 'source', 'purpose', 'raw_text', 'explanation', 'status', 'created_at', 'updated_at']);
   });
 
   it('cached_data table has correct columns', () => {
@@ -91,7 +85,7 @@ describe('Database', () => {
     const row = db.prepare('SELECT * FROM manifests WHERE id = ?').get('email-search') as Record<string, unknown>;
     expect(row.id).toBe('email-search');
     expect(row.source).toBe('gmail');
-    expect(row.status).toBe('active');
+    expect(row.status).toBe('inactive');
   });
 
   it('inserts and reads cached_data', () => {
