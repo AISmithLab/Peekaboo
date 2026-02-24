@@ -18,12 +18,12 @@ sources:
       # clientId: "your-github-client-id"
       # clientSecret: "your-github-client-secret"
 
-# AI provider for policy translation
+# AI provider for policy translation (future feature).
 # Uncomment one provider and add your API key.
-ai:
-  provider: anthropic
-  api_key: "your-anthropic-api-key"
-  model: "claude-sonnet-4-20250514"
+# ai:
+#   provider: anthropic
+#   api_key: "your-anthropic-api-key"
+#   model: "claude-sonnet-4-20250514"
 
 # ai:
 #   provider: openai
@@ -33,6 +33,6 @@ ai:
 # ai:
 #   provider: google
 #   api_key: "your-google-ai-api-key"
-#   model: "gemini-2.0-flash"
+#   model: "gemini-3-pro-preview"
 
 port: 3000
