@@ -1,7 +1,7 @@
 # PersonalDataHub
 
 
-PersonalDataHub is an open-source, self-hosted data hub between the services that manage your personal data (Gmail, GitHub, etc.) and your AI agents (e.g., OpenClaw). It connects to your services via secure protocols (e.g., OAuth2), and lets agents query them through REST APIs — all running locally on your machine, with no data sent to third parties. You configure access policies in natural language, filter what agents can see, and review every action they propose before it's executed.
+PersonalDataHub is an open-source, self-hosted data hub between the services that manage your personal data (Gmail, GitHub, etc.) and your AI agents (e.g., OpenClaw). It connects to your services via secure protocols (e.g., OAuth2), and lets agents query them through REST APIs — all running locally on your machine, with no data sent to third parties. You configure quick filters to control what agents can see, and review every action they propose before it's executed.
 
 ![](architecture.png)
 
@@ -11,7 +11,7 @@ PersonalDataHub is an open-source, self-hosted data hub between the services tha
 ### How it works
 
 1. **You connect** your accounts via OAuth2 — PersonalDataHub stores the tokens locally
-2. **You define** what the agent can see: which fields, which repos, which date range, what to redact
+2. **You configure** quick filters to control what the agent can see: date ranges, senders, subjects, hidden fields
 3. **Agents call** a simple REST API (`POST /pull`, `POST /propose`) with a scoped API key
 4. **You review** every outbound action (drafts, replies) before it's sent — nothing goes out without your approval
 
@@ -55,29 +55,28 @@ See the [Setup Guide](docs/SETUP.md) for full details on both options, including
 
 New sources can be added by implementing the `SourceConnector` interface.
 
-### Data Pipeline
+### Quick Filters
 
-Data passes through a configurable pipeline of operators before reaching the agent:
+Control what data agents can see using simple toggle-based filters in the GUI:
 
-| Operator | Purpose |
-|----------|---------|
-| **pull** | Fetch from source API (or local cache) |
-| **select** | Keep only specified fields (e.g., title, body, labels) |
-| **filter** | Conditional filtering (equals, contains, regex, etc.) |
-| **transform** | Redact patterns (SSNs, emails) or truncate text |
-| **store** | Cache locally with TTL and optional AES-256-GCM encryption |
-| **stage** | Queue an outbound action for owner approval |
+| Filter | What it does |
+|--------|-------------|
+| **Only emails after** | Drop rows before a given date |
+| **Only from sender** | Keep rows where sender contains a value |
+| **Subject contains** | Keep rows where subject contains a value |
+| **Exclude sender** | Drop rows where sender matches |
+| **Exclude subject containing** | Drop rows where subject matches |
+| **Only with attachments** | Keep only rows that have attachments |
+| **Hide field from agents** | Remove a field (e.g., body) before delivery |
 
-Pipelines are defined in a simple DSL called **manifests**:
+Filters are stored in the database and applied at read time — cached data is stored unfiltered, so you can adjust filters without re-syncing.
 
-```
-@purpose: "Read recent emails, redact SSNs"
-@graph: fetch -> pick_fields -> redact_ssns
+### Caching
 
-fetch: pull { source: "gmail", type: "email" }
-pick_fields: select { fields: ["title", "body", "labels"] }
-redact_ssns: transform { kind: "redact", field: "body", pattern: "\\d{3}-\\d{2}-\\d{4}", replacement: "[SSN REDACTED]" }
-```
+Data can be fetched live on every request, or cached locally with background sync:
+
+- **Cache off** (default) — each `POST /pull` fetches directly from the source API
+- **Cache on** — a background job syncs data to a local SQLite table (with optional AES-256-GCM encryption); `POST /pull` reads from the cache
 
 ### Action Staging
 
@@ -88,7 +87,7 @@ When an agent wants to send an email or create a draft, the action enters a **st
 A built-in admin dashboard at `http://localhost:3000` for:
 
 - **Sources** — connect Gmail/GitHub via OAuth, configure boundaries (date range, labels, repos)
-- **Manifests** — create and edit data pipelines
+- **Filters** — toggle quick filters to control what agents can see
 - **Staging** — review, edit, approve, or reject proposed agent actions
 - **Settings** — manage API keys, browse the audit log, select GitHub repos
 
@@ -109,13 +108,11 @@ POST /app/v1/pull
 ```json
 {
   "source": "gmail",
-  "type": "email",
-  "params": { "query": "Q4 report", "limit": 10 },
   "purpose": "Find emails about Q4 report to summarize for user"
 }
 ```
 
-Response data is filtered, redacted, and transformed according to the owner's access policy.
+Response data is filtered according to the owner's quick filter configuration.
 
 ### Propose Action
 
@@ -151,7 +148,7 @@ Actions are staged for owner review — not executed until approved via the GUI.
 
 1. **Credential scope** — the agent holds a scoped identity that can't access resources outside the boundary
 2. **Query boundary** — the connector refuses to fetch data outside configured limits (date range, repo list, label filters)
-3. **Data pipeline** — further restricts which fields are visible and redacts sensitive content before delivery
+3. **Quick filters** — further restrict which rows are visible and which fields are delivered to the agent
 
 ### Tech Stack
 
@@ -169,9 +166,8 @@ src/
 ├── config/         YAML config loading + Zod schema
 ├── connectors/     Source adapters (Gmail, GitHub)
 ├── db/             SQLite schema, encryption helpers
-├── operators/      Pipeline operators (pull, select, filter, transform, store, stage)
-├── pipeline/       Pipeline execution engine
-├── manifest/       DSL parser and validator
+├── filters.ts      Quick filter types, catalog, and apply logic
+├── sync/           Background cache sync scheduler
 ├── server/         HTTP server + app API routes
 ├── gui/            Web admin dashboard
 ├── audit/          Immutable audit trail
@@ -190,13 +186,13 @@ PersonalDataHub is designed to run on **your local machine**. The owner's OAuth 
 
 **What the agent cannot do:**
 - Access any data outside the configured boundary (date range, repos, labels)
-- See fields not included in the manifest (e.g., sender identity can be stripped)
-- Read redacted content (e.g., SSNs replaced before delivery)
+- See fields hidden by quick filters (e.g., body can be stripped)
+- See rows excluded by active filters (e.g., emails from specific senders)
 - Send emails or execute actions without owner approval
 - Delete anything — no destructive endpoints exist
 
 **Known limitations:**
-- Once data passes through the pipeline and reaches the agent, PersonalDataHub can't control what the agent does with it — network sandboxing at the agent runtime level is the mitigation
+- Once data passes through filters and reaches the agent, PersonalDataHub can't control what the agent does with it — network sandboxing at the agent runtime level is the mitigation
 - A host-level compromise (attacker reads `hub-config.yaml` and `.env`) gives access to the owner's OAuth tokens and encryption keys — host-level security (disk encryption, OS access controls) is the owner's responsibility
 - No built-in rate limiting yet (future enhancement)
 - Agents may pretend to be a human user to interact with the hub to override the access, not sure if they are smart enough today (future enhancement).
@@ -207,7 +203,7 @@ For the full threat model with attack/mitigation tables for Gmail and GitHub, se
 
 - [Setup Guide](docs/SETUP.md) — install and run PersonalDataHub
 - [OAuth Setup](docs/OAUTH-SETUP.md) — OAuth credential configuration (uses PKCE for secure authorization)
-- [Development Guide](docs/DEVELOPMENT.md) — codebase structure, adding connectors and operators, demo data, testing
+- [Development Guide](docs/DEVELOPMENT.md) — codebase structure, adding connectors, demo data, testing
 - [Security & Threat Model](docs/SECURITY.md) — detailed attack surface analysis for Gmail and GitHub
 - [Design Doc](docs/architecture-design/design.md) — full architecture and design rationale
 
