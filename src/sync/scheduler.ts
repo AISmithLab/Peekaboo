@@ -1,9 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
-import { parseManifest } from '../manifest/parser.js';
-import { executePipeline } from '../pipeline/engine.js';
-import { createPipelineContext } from '../pipeline/context.js';
+import { encryptField } from '../db/encryption.js';
 
 interface SyncDeps {
   db: Database.Database;
@@ -33,46 +32,56 @@ export function parseInterval(str: string): number {
 }
 
 /**
- * Sync a single source: find its active manifest, auto-append a store node
- * if needed, and run the pipeline with cacheOnly: false to fetch live data
- * and persist it to cache.
+ * Sync a single source: fetch live data from connector and store to cached_data.
+ * No filters applied during sync — we cache everything, filter at read time.
  */
 export async function syncSource(deps: SyncDeps, source: string): Promise<void> {
-  // Find the active manifest for this source
-  const row = deps.db.prepare(
-    "SELECT id, raw_text FROM manifests WHERE source = ? AND status = 'active' LIMIT 1",
-  ).get(source) as { id: string; raw_text: string } | undefined;
-
-  if (!row) {
-    console.log(`[sync] No active manifest for source "${source}", skipping`);
+  const connector = deps.connectorRegistry.get(source);
+  if (!connector) {
+    console.log(`[sync] No connector for source "${source}", skipping`);
     return;
   }
 
-  const parsed = parseManifest(row.raw_text, row.id);
+  const sourceConfig = deps.config.sources[source];
+  const boundary = sourceConfig?.boundary ?? {};
 
-  // Auto-append a store node if the manifest doesn't already have one
-  const hasStore = Array.from(parsed.operators.values()).some((op) => op.type === 'store');
-  if (!hasStore) {
-    parsed.operators.set('_auto_store', {
-      name: '_auto_store',
-      type: 'store',
-      properties: {},
-    });
-    parsed.graph.push('_auto_store');
-  }
+  const rows = await connector.fetch(boundary);
 
-  const ctx = createPipelineContext({
-    db: deps.db,
-    connectorRegistry: deps.connectorRegistry,
-    config: deps.config,
-    appId: 'sync',
-    manifestId: row.id,
-    encryptionKey: deps.encryptionKey,
-    cacheOnly: false,
+  // Store to cached_data (upsert)
+  const upsert = deps.db.prepare(`
+    INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data, cached_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+    ON CONFLICT(source, source_item_id) DO UPDATE SET
+      type = excluded.type,
+      timestamp = excluded.timestamp,
+      data = excluded.data,
+      cached_at = excluded.cached_at,
+      expires_at = excluded.expires_at
+  `);
+
+  const ttl = sourceConfig?.cache?.ttl;
+  const expiresAt = ttl ? computeExpiresAt(ttl) : null;
+
+  const insertMany = deps.db.transaction(() => {
+    for (const row of rows) {
+      let dataStr = JSON.stringify(row.data);
+      if (deps.encryptionKey) {
+        dataStr = encryptField(dataStr, deps.encryptionKey);
+      }
+      upsert.run(
+        randomUUID(),
+        row.source,
+        row.source_item_id,
+        row.type,
+        row.timestamp,
+        dataStr,
+        expiresAt,
+      );
+    }
   });
 
-  const result = await executePipeline(parsed, ctx);
-  console.log(`[sync] ${source}: fetched ${result.meta.itemsFetched} items, stored ${result.meta.itemsReturned}`);
+  insertMany();
+  console.log(`[sync] ${source}: fetched and stored ${rows.length} items`);
 }
 
 /**
@@ -119,4 +128,23 @@ export function startSyncJobs(deps: SyncDeps): () => void {
       clearInterval(timer);
     }
   };
+}
+
+function computeExpiresAt(ttl: string): string {
+  const now = Date.now();
+  const match = ttl.match(/^(\d+)([dhm])$/);
+  if (!match) return new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const amount = parseInt(match[1], 10);
+  const unit = match[2];
+
+  let ms: number;
+  switch (unit) {
+    case 'd': ms = amount * 24 * 60 * 60 * 1000; break;
+    case 'h': ms = amount * 60 * 60 * 1000; break;
+    case 'm': ms = amount * 60 * 1000; break;
+    default: ms = 7 * 24 * 60 * 60 * 1000;
+  }
+
+  return new Date(now + ms).toISOString();
 }

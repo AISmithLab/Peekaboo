@@ -66,26 +66,38 @@ describe('GUI Routes', () => {
     expect(json.sources.map((s: { name: string }) => s.name).sort()).toEqual(['github', 'gmail']);
   });
 
-  it('POST /api/manifests creates a manifest', async () => {
-    const res = await app.request('/api/manifests', {
+  it('GET /api/filters returns filters list and types', async () => {
+    const res = await app.request('/api/filters');
+    expect(res.status).toBe(200);
+    const json = await res.json() as { ok: boolean; filters: unknown[]; filterTypes: Record<string, unknown> };
+    expect(json.ok).toBe(true);
+    expect(json.filters).toEqual([]);
+    expect(json.filterTypes).toBeDefined();
+    expect(json.filterTypes.time_after).toBeDefined();
+  });
+
+  it('POST /api/filters creates a filter', async () => {
+    const res = await app.request('/api/filters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         source: 'gmail',
-        purpose: 'Test',
-        raw_text: '@purpose: "Test"\n@graph: pull\npull: pull { source: "gmail" }',
+        type: 'time_after',
+        value: '2026-01-01',
+        enabled: 1,
       }),
     });
     expect(res.status).toBe(200);
-    const createJson = await res.json() as { ok: boolean; id: string };
-    expect(createJson.ok).toBe(true);
-    expect(createJson.id).toMatch(/^manifest_/);
+    const json = await res.json() as { ok: boolean; id: string };
+    expect(json.ok).toBe(true);
+    expect(json.id).toMatch(/^filter_/);
 
-    const manifests = await app.request('/api/manifests');
-    const json = await manifests.json() as { manifests: Array<{ id: string; status: string }> };
-    expect(json.manifests).toHaveLength(1);
-    expect(json.manifests[0].id).toBe(createJson.id);
-    expect(json.manifests[0].status).toBe('active');
+    // Verify via GET
+    const filtersRes = await app.request('/api/filters?source=gmail');
+    const filtersJson = await filtersRes.json() as { filters: Array<{ id: string; type: string; value: string }> };
+    expect(filtersJson.filters).toHaveLength(1);
+    expect(filtersJson.filters[0].type).toBe('time_after');
+    expect(filtersJson.filters[0].value).toBe('2026-01-01');
   });
 
   it('POST /api/keys generates a new API key', async () => {

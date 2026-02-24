@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { setupE2eApp, request, insertManifest, cleanup } from './helpers.js';
+import { setupE2eApp, request, cleanup } from './helpers.js';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
 import type { AuditLog } from '../../src/audit/log.js';

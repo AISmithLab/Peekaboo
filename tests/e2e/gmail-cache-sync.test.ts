@@ -1,23 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { setupE2eApp, makeConfigWithCache, request, insertManifest, cleanup, makeGmailRows } from './helpers.js';
+import { setupE2eApp, makeConfigWithCache, request, cleanup, makeGmailRows } from './helpers.js';
 import { encryptField } from '../../src/db/encryption.js';
 import type { DataRow } from '../../src/connectors/types.js';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
-
-const STORE_MANIFEST = `
-@purpose: "Cache emails locally"
-@graph: pull_emails -> store_locally
-pull_emails: pull { source: "gmail", type: "email" }
-store_locally: store { }
-`;
-
-const READ_MANIFEST = `
-@purpose: "Read cached emails"
-@graph: pull_emails -> select_fields
-pull_emails: pull { source: "gmail", type: "email" }
-select_fields: select { fields: ["title", "body", "labels"] }
-`;
 
 describe('E2E: Gmail Cache/Sync', () => {
   let app: Hono;
@@ -31,14 +17,9 @@ describe('E2E: Gmail Cache/Sync', () => {
 
   afterEach(() => cleanup(db, tmpDir));
 
-  it('store manifest populates cache → subsequent pull served from cache', async () => {
-    // First: use store manifest to cache data (sync pipeline runs with cacheOnly: false)
-    insertManifest(db, 'gmail-store', 'gmail', 'Cache emails', STORE_MANIFEST);
-
-    // Simulate sync: run the store manifest without cacheOnly so it fetches live
+  it('syncSource populates cache, pull reads from cache', async () => {
     const { syncSource } = await import('../../src/sync/scheduler.js');
     const env = setupE2eApp(undefined, makeConfigWithCache());
-    // Use a fresh setup for sync to avoid cacheOnly on the API path
     await syncSource(
       { db, connectorRegistry: env.connectorRegistry, config: env.config, encryptionKey: 'e2e-test-secret' },
       'gmail',
@@ -49,10 +30,7 @@ describe('E2E: Gmail Cache/Sync', () => {
     const cached = db.prepare('SELECT COUNT(*) as count FROM cached_data WHERE source = ?').get('gmail') as { count: number };
     expect(cached.count).toBe(3);
 
-    // Now switch to read manifest — should read from cache
-    db.prepare('DELETE FROM manifests').run();
-    insertManifest(db, 'gmail-read', 'gmail', 'Read cached', READ_MANIFEST);
-
+    // Pull should read from cache
     const readRes = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
       purpose: 'Read from cache',
@@ -75,8 +53,6 @@ describe('E2E: Gmail Cache/Sync', () => {
       ).run(`cache_${row.source_item_id}`, row.source, row.source_item_id, row.type, row.timestamp, dataStr);
     }
 
-    insertManifest(db, 'gmail-read', 'gmail', 'Read cached', READ_MANIFEST);
-
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
       purpose: 'Serve from pre-populated cache',
@@ -85,11 +61,38 @@ describe('E2E: Gmail Cache/Sync', () => {
     expect(res.status).toBe(200);
     const json = await res.json() as { data: DataRow[] };
     expect(json.data).toHaveLength(3);
-    // Should have only selected fields
+    // All fields should be present (no select operator)
     for (const row of json.data) {
       expect(Object.keys(row.data)).toContain('title');
       expect(Object.keys(row.data)).toContain('body');
       expect(Object.keys(row.data)).toContain('labels');
     }
+  });
+
+  it('filters are applied to cached data', async () => {
+    // Pre-populate cache
+    const rows = makeGmailRows();
+    const encryptionKey = 'e2e-test-secret';
+    for (const row of rows) {
+      const dataStr = encryptField(JSON.stringify(row.data), encryptionKey);
+      db.prepare(
+        `INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(`cache_${row.source_item_id}`, row.source, row.source_item_id, row.type, row.timestamp, dataStr);
+    }
+
+    // Add a filter
+    db.prepare(
+      "INSERT INTO filters (id, source, type, value, enabled) VALUES (?, ?, ?, ?, 1)",
+    ).run('f1', 'gmail', 'subject_include', 'Q4');
+
+    const res = await request(app, 'POST', '/app/v1/pull', {
+      source: 'gmail',
+      purpose: 'Filtered cache read',
+    });
+
+    const json = await res.json() as { data: DataRow[] };
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].data.title).toContain('Q4');
   });
 });

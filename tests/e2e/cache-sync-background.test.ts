@@ -1,13 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { setupE2eApp, makeConfigWithCache, request, insertManifest, cleanup } from './helpers.js';
+import { setupE2eApp, makeConfigWithCache, request, cleanup } from './helpers.js';
 import { parseInterval, syncSource } from '../../src/sync/scheduler.js';
 import type Database from 'better-sqlite3';
-
-const MANIFEST_TEXT = `
-@purpose: "Read gmail emails"
-@graph: fetch_emails
-fetch_emails: pull { source: "gmail", type: "email" }
-`;
 
 describe('Cache-First Pull with Background Sync', () => {
   let db: Database.Database;
@@ -22,11 +16,8 @@ describe('Cache-First Pull with Background Sync', () => {
     db = env.db;
     tmpDir = env.tmpDir;
 
-    insertManifest(db, 'mf_cache_1', 'gmail', 'Read emails', MANIFEST_TEXT);
-
     const res = await request(env.app, 'POST', '/app/v1/pull', {
       source: 'gmail',
-      type: 'email',
       purpose: 'test cache-only pull',
     });
 
@@ -40,8 +31,6 @@ describe('Cache-First Pull with Background Sync', () => {
     db = env.db;
     tmpDir = env.tmpDir;
 
-    insertManifest(db, 'mf_cache_2', 'gmail', 'Read emails', MANIFEST_TEXT);
-
     // Pre-populate cache
     db.prepare(
       `INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -49,7 +38,6 @@ describe('Cache-First Pull with Background Sync', () => {
 
     const res = await request(env.app, 'POST', '/app/v1/pull', {
       source: 'gmail',
-      type: 'email',
       purpose: 'test cache hit',
     });
 
@@ -59,12 +47,10 @@ describe('Cache-First Pull with Background Sync', () => {
     expect(body.data[0].data.title).toBe('Cached Email');
   });
 
-  it('syncSource populates cache via live fetch with auto-appended store', async () => {
+  it('syncSource populates cache via live fetch', async () => {
     const env = setupE2eApp(undefined, makeConfigWithCache());
     db = env.db;
     tmpDir = env.tmpDir;
-
-    insertManifest(db, 'mf_sync_1', 'gmail', 'Read emails', MANIFEST_TEXT);
 
     // Run sync — should fetch live data and store in cache
     await syncSource(
@@ -84,7 +70,6 @@ describe('Cache-First Pull with Background Sync', () => {
     // Now a cache-only pull should return data
     const res = await request(env.app, 'POST', '/app/v1/pull', {
       source: 'gmail',
-      type: 'email',
       purpose: 'test after sync',
     });
 

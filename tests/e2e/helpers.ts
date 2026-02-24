@@ -178,12 +178,6 @@ export async function request(
   return app.request(path, init);
 }
 
-export function insertManifest(db: Database.Database, id: string, source: string, purpose: string, rawText: string): void {
-  db.prepare(
-    "INSERT INTO manifests (id, source, purpose, raw_text, status) VALUES (?, ?, ?, ?, 'active')",
-  ).run(id, source, purpose, rawText);
-}
-
 export function cleanup(db: Database.Database, tmpDir: string): void {
   db.close();
   rmSync(tmpDir, { recursive: true, force: true });

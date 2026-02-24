@@ -65,17 +65,6 @@ function setupDb(db: Database.Database): void {
   db.prepare(
     'INSERT INTO api_keys (id, key_hash, name, allowed_manifests) VALUES (?, ?, ?, ?)',
   ).run('openclaw', TEST_KEY_HASH, 'OpenClaw Agent', '["*"]');
-
-  // Insert a manifest for gmail
-  const manifestText = `
-@purpose: "Search emails"
-@graph: pull_emails -> select_fields
-pull_emails: pull { source: "gmail", type: "email" }
-select_fields: select { fields: ["title", "body", "timestamp"] }
-`;
-  db.prepare(
-    "INSERT INTO manifests (id, source, purpose, raw_text, status) VALUES (?, ?, ?, ?, 'active')",
-  ).run('gmail-search', 'gmail', 'Search emails', manifestText);
 }
 
 async function request(app: Hono, method: string, path: string, body?: unknown, headers?: Record<string, string>) {

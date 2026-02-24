@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`;
 
+const CREATE_FILTERS = `
+CREATE TABLE IF NOT EXISTS filters (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL,
+  type TEXT NOT NULL,
+  value TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`;
+
 const CREATE_GITHUB_REPOS = `
 CREATE TABLE IF NOT EXISTS github_repos (
   full_name TEXT PRIMARY KEY,
@@ -103,5 +113,6 @@ export function createTables(db: Database.Database): void {
   db.exec(CREATE_STAGING);
   db.exec(CREATE_AUDIT_LOG);
   db.exec(CREATE_OAUTH_TOKENS);
+  db.exec(CREATE_FILTERS);
   db.exec(CREATE_GITHUB_REPOS);
 }

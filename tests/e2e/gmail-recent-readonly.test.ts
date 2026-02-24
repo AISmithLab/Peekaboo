@@ -1,19 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { setupE2eApp, request, insertManifest, cleanup } from './helpers.js';
+import { setupE2eApp, request, cleanup } from './helpers.js';
 import type { DataRow } from '../../src/connectors/types.js';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
 import type { AuditLog } from '../../src/audit/log.js';
 
-const READONLY_MANIFEST = `
-@purpose: "Read-only, recent emails with SSN redaction"
-@graph: pull_emails -> select_fields -> redact_sensitive
-pull_emails: pull { source: "gmail", type: "email" }
-select_fields: select { fields: ["title", "body", "labels", "timestamp"] }
-redact_sensitive: transform { kind: "redact", field: "body", pattern: "\\d{3}-\\d{2}-\\d{4}", replacement: "[REDACTED]" }
-`;
-
-describe('E2E: Gmail Read-Only Recent', () => {
+describe('E2E: Gmail with Time and Sender Filters', () => {
   let app: Hono;
   let db: Database.Database;
   let tmpDir: string;
@@ -21,49 +13,42 @@ describe('E2E: Gmail Read-Only Recent', () => {
 
   beforeEach(() => {
     ({ app, db, tmpDir, audit } = setupE2eApp());
-    insertManifest(db, 'gmail-readonly', 'gmail', 'Read-only recent', READONLY_MANIFEST);
   });
 
   afterEach(() => cleanup(db, tmpDir));
 
-  it('returns only title, body, labels, timestamp (no sender info)', async () => {
+  it('time_after filter excludes old emails', async () => {
+    db.prepare(
+      "INSERT INTO filters (id, source, type, value, enabled) VALUES (?, ?, ?, ?, 1)",
+    ).run('f1', 'gmail', 'time_after', '2026-02-19T09:00:00Z');
+
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
-      type: 'email',
-      purpose: 'Find Q4 report emails',
+      purpose: 'Time filter check',
     });
 
     expect(res.status).toBe(200);
     const json = await res.json() as { ok: boolean; data: DataRow[] };
     expect(json.ok).toBe(true);
-    expect(json.data.length).toBe(3);
-
-    for (const row of json.data) {
-      const keys = Object.keys(row.data);
-      expect(keys).toContain('title');
-      expect(keys).toContain('body');
-      expect(keys).toContain('labels');
-      // These should NOT be present (filtered by select)
-      expect(keys).not.toContain('author_name');
-      expect(keys).not.toContain('author_email');
-      expect(keys).not.toContain('participants');
-    }
+    // Only msg_e2e_1 (Feb 20) should pass; msg_e2e_2 (Feb 19 08:00) and msg_e2e_3 (Feb 18) excluded
+    expect(json.data.length).toBe(1);
+    expect(json.data[0].source_item_id).toBe('msg_e2e_1');
   });
 
-  it('redacts SSNs in body', async () => {
+  it('from_include filter keeps only matching senders', async () => {
+    db.prepare(
+      "INSERT INTO filters (id, source, type, value, enabled) VALUES (?, ?, ?, ?, 1)",
+    ).run('f1', 'gmail', 'from_include', 'bob');
+
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
-      purpose: 'Check redaction',
+      purpose: 'Sender filter check',
     });
 
-    const json = await res.json() as { data: DataRow[] };
-    const row1 = json.data.find(r => r.source_item_id === 'msg_e2e_1')!;
-    expect(row1.data.body).toContain('[REDACTED]');
-    expect(row1.data.body).not.toContain('123-45-6789');
-
-    const row2 = json.data.find(r => r.source_item_id === 'msg_e2e_2')!;
-    expect(row2.data.body).toContain('[REDACTED]');
-    expect(row2.data.body).not.toContain('987-65-4321');
+    const json = await res.json() as { ok: boolean; data: DataRow[] };
+    expect(json.ok).toBe(true);
+    expect(json.data.length).toBe(1);
+    expect(json.data[0].data.author_email).toContain('bob');
   });
 
   it('creates audit log entry', async () => {

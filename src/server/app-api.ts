@@ -2,12 +2,11 @@ import { Hono } from 'hono';
 import { compareSync } from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import type { ConnectorRegistry } from '../connectors/types.js';
+import type { ConnectorRegistry, DataRow } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
-import { parseManifest } from '../manifest/parser.js';
-import { executePipeline } from '../pipeline/engine.js';
-import { createPipelineContext } from '../pipeline/context.js';
 import { AuditLog } from '../audit/log.js';
+import { applyFilters, type QuickFilter } from '../filters.js';
+import { decryptField } from '../db/encryption.js';
 
 interface AppApiDeps {
   db: Database.Database;
@@ -50,7 +49,7 @@ export function createAppApi(deps: AppApiDeps): Hono<Env> {
   // POST /pull
   app.post('/pull', async (c) => {
     const body = await c.req.json();
-    const { source, type, params, purpose } = body;
+    const { source, purpose } = body;
 
     if (!purpose) {
       return c.json({ ok: false, error: { code: 'BAD_REQUEST', message: 'Missing required field: purpose' } }, 400);
@@ -61,50 +60,41 @@ export function createAppApi(deps: AppApiDeps): Hono<Env> {
     }
 
     const apiKey = c.get('apiKey');
-
-    // Find a manifest for this source
-    const manifest = findManifestForSource(deps.db, apiKey, source);
-    if (!manifest) {
-      return c.json({ ok: false, error: { code: 'NO_MANIFEST', message: `No active manifest found for source "${source}"` } }, 404);
-    }
-
-    // Parse the manifest
-    const parsed = parseManifest(manifest.raw_text, manifest.id);
-
-    // Override pull operator params if provided
-    if (type || params) {
-      for (const [, op] of parsed.operators) {
-        if (op.type === 'pull') {
-          if (type) op.properties.type = type;
-          if (params) {
-            Object.assign(op.properties, params);
-          }
-        }
-      }
-    }
-
     const sourceConfig = deps.config.sources[source];
-    const cacheEnabled = sourceConfig?.cache?.enabled === true;
+    if (!sourceConfig) {
+      return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `Unknown source: "${source}"` } }, 404);
+    }
 
-    const ctx = createPipelineContext({
-      db: deps.db,
-      connectorRegistry: deps.connectorRegistry,
-      config: deps.config,
-      appId: apiKey.id,
-      manifestId: manifest.id,
-      encryptionKey: deps.encryptionKey,
-      cacheOnly: cacheEnabled,
-    });
+    const cacheEnabled = sourceConfig.cache?.enabled === true;
 
-    const result = await executePipeline(parsed, ctx);
+    let rows: DataRow[];
+
+    if (cacheEnabled) {
+      // Read from cached_data
+      rows = readFromCache(deps.db, source, sourceConfig, deps.encryptionKey);
+    } else {
+      // Fetch live from connector
+      const connector = deps.connectorRegistry.get(source);
+      if (!connector) {
+        return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `No connector for source: "${source}"` } }, 404);
+      }
+      const boundary = sourceConfig.boundary ?? {};
+      rows = await connector.fetch(boundary);
+    }
+
+    // Load enabled filters and apply
+    const filters = deps.db
+      .prepare('SELECT * FROM filters WHERE source = ? AND enabled = 1')
+      .all(source) as QuickFilter[];
+    const filtered = applyFilters(rows, filters);
 
     // Log to audit
-    auditLog.logPull(source, purpose, result.data.length, `app:${apiKey.id}`);
+    auditLog.logPull(source, purpose, filtered.length, `app:${apiKey.id}`);
 
     return c.json({
       ok: true,
-      data: result.data,
-      meta: result.meta,
+      data: filtered,
+      meta: { itemsFetched: rows.length, itemsReturned: filtered.length },
     });
   });
 
@@ -155,24 +145,46 @@ function verifyApiKey(db: Database.Database, token: string): ApiKeyRow | null {
   return null;
 }
 
-function findManifestForSource(
+function readFromCache(
   db: Database.Database,
-  apiKey: ApiKeyRow,
   source: string,
-): { id: string; raw_text: string } | null {
-  const allowed: string[] = JSON.parse(apiKey.allowed_manifests);
+  sourceConfig: HubConfigParsed['sources'][string],
+  encryptionKey?: string,
+): DataRow[] {
+  let query = 'SELECT * FROM cached_data WHERE source = ?';
+  const params: unknown[] = [source];
 
-  let query: string;
-  let params: unknown[];
-
-  if (allowed.includes('*')) {
-    query = "SELECT id, raw_text FROM manifests WHERE source = ? AND status = 'active' LIMIT 1";
-    params = [source];
-  } else {
-    const placeholders = allowed.map(() => '?').join(',');
-    query = `SELECT id, raw_text FROM manifests WHERE id IN (${placeholders}) AND source = ? AND status = 'active' LIMIT 1`;
-    params = [...allowed, source];
+  if (sourceConfig?.boundary?.after) {
+    query += ' AND timestamp >= ?';
+    params.push(sourceConfig.boundary.after);
   }
 
-  return db.prepare(query).get(...params) as { id: string; raw_text: string } | undefined ?? null;
+  query += " AND (expires_at IS NULL OR expires_at > datetime('now'))";
+
+  const rows = db.prepare(query).all(...params) as Array<{
+    source: string;
+    source_item_id: string;
+    type: string;
+    timestamp: string;
+    data: string;
+  }>;
+
+  return rows.map((row) => {
+    let dataStr = row.data;
+    if (encryptionKey) {
+      try {
+        dataStr = decryptField(row.data, encryptionKey);
+      } catch {
+        // Data might not be encrypted, use as-is
+      }
+    }
+
+    return {
+      source: row.source,
+      source_item_id: row.source_item_id,
+      type: row.type,
+      timestamp: row.timestamp,
+      data: JSON.parse(dataStr),
+    };
+  });
 }
