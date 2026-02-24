@@ -393,13 +393,9 @@ if (isDirectRun) {
       const result = loadDemoData(db);
       db.close();
       console.log('\n  Demo data loaded successfully!\n');
-      console.log(`  Emails:    ${result.emailCount} synthetic emails inserted`);
-      console.log(`  Manifests: ${result.manifestCount} demo manifests created`);
-      console.log('\n  Demo manifests:');
-      console.log('    demo-gmail-readonly  — pull + select (title, body, labels, author_name)');
-      console.log('    demo-gmail-metadata  — pull + select (title, labels, author_name only)');
-      console.log('    demo-gmail-redacted  — pull + select + redact SSNs');
-      console.log('\n  Try: npx pdh start, then POST /app/v1/pull with a demo manifest.\n');
+      console.log(`  Emails: ${result.emailCount} synthetic emails inserted`);
+      console.log('\n  Try: npx pdh start, then POST /app/v1/pull to query the demo data.');
+      console.log('  Configure quick filters in the GUI to control what agents see.\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
@@ -418,8 +414,7 @@ if (isDirectRun) {
       const result = unloadDemoData(db);
       db.close();
       console.log('\n  Demo data removed.\n');
-      console.log(`  Emails removed:    ${result.emailsRemoved}`);
-      console.log(`  Manifests removed: ${result.manifestsRemoved}\n`);
+      console.log(`  Emails removed: ${result.emailsRemoved}\n`);
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
