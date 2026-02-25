@@ -112,13 +112,7 @@ sudo npx pdh uninstall-service
 
 To connect Gmail, GitHub, and other sources, you need to open the PersonalDataHub GUI at `http://localhost:3000` and log in with the owner password from Step 2.
 
-**Important: why browser isolation matters.** When you log into the GUI, a session cookie (`pdh_session`) is stored in your browser. An AI agent with shell access (like Claude Code) running as your main user can read your browser's cookie store on disk:
-
-- Chrome (Linux): `~/.config/google-chrome/Default/Cookies`
-- Chrome (macOS): `~/Library/Application Support/Google/Chrome/Default/Cookies`
-- Firefox: `~/.mozilla/firefox/<profile>/cookies.sqlite`
-
-If the agent extracts this cookie, it can call admin endpoints (approve actions, change filters, disconnect sources) without your knowledge. To prevent this, open the GUI in a browser session that the agent cannot access.
+Open the GUI in a browser session that the agent cannot access. This prevents the agent from reading the session cookie and calling admin endpoints. See the [Browser Session Security](./architecture-design/design-v2.md#browser-session-security) section in the design doc for a detailed explanation.
 
 ### Approach 1: SSH tunnel from a different machine (recommended for servers)
 
