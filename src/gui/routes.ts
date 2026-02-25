@@ -16,7 +16,6 @@ interface GuiDeps {
   db: Database.Database;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
-  encryptionKey?: string;
   tokenManager: TokenManager;
 }
 
@@ -37,7 +36,6 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       name,
       enabled: config.enabled,
       boundary: config.boundary,
-      cache: config.cache,
       connected: deps.tokenManager.hasToken(name),
       accountInfo: deps.tokenManager.getAccountInfo(name),
     }));
@@ -58,33 +56,6 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     }
 
     return c.json({ ok: true, sources });
-  });
-
-  // Toggle cache for a source
-  app.post('/api/sources/:name/cache', async (c) => {
-    const name = c.req.param('name');
-    const body = await c.req.json();
-    const enabled = body.enabled === true;
-
-    const sourceConfig = deps.config.sources[name];
-    if (!sourceConfig) {
-      return c.json({ ok: false, error: `Unknown source: "${name}"` }, 404);
-    }
-
-    if (!sourceConfig.cache) {
-      sourceConfig.cache = { enabled: false, encrypt: true };
-    }
-    sourceConfig.cache.enabled = enabled;
-
-    if (!enabled) {
-      // Cache disabled — purge cached data for this source
-      const deleted = deps.db.prepare('DELETE FROM cached_data WHERE source = ?').run(name);
-      console.log(`[cache] Disabled cache for "${name}", deleted ${deleted.changes} cached rows`);
-    } else {
-      console.log(`[cache] Enabled cache for "${name}"`);
-    }
-
-    return c.json({ ok: true, enabled });
   });
 
   // Get filters for a source
@@ -791,9 +762,7 @@ function getIndexHtml(): string {
 
     let state = {
       sources: [], filters: [], keys: [], staging: [], audit: [],
-      gmail: {
-        cachingEnabled: false,
-      },
+      gmail: {},
       github: { repoList: [], reposLoading: false, reposLoaded: false, filterOwner: '', search: '' },
       expandedRepos: {},
       expandedEmail: null,
@@ -830,13 +799,8 @@ function getIndexHtml(): string {
       state.staging = staging.actions || [];
       state.audit = audit.entries || [];
 
-      // Seed gmail state from config
-      const gm = state.sources.find(s => s.name === 'gmail');
-      if (gm && gm.cache) {
-        state.gmail.cachingEnabled = gm.cache.enabled;
-      }
-
       // Fetch real emails if Gmail is connected (uses preview with filters)
+      const gm = state.sources.find(s => s.name === 'gmail');
       if (gm && gm.connected && !state.realEmails && !state.emailsLoading) {
         state.emailsLoading = true;
         state.emailsError = null;
@@ -1132,15 +1096,6 @@ function getIndexHtml(): string {
             <div>
               <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.5px;color:var(--fg)">Gmail</h1>
               \${accountEmail ? '<p style="font-size:13px;color:var(--muted);margin-top:2px">' + escapeHtml(accountEmail) + '</p>' : ''}
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--card)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-              <span style="font-size:14px;color:var(--fg)">Cache locally</span>
-              <label style="position:relative;display:inline-block;width:36px;height:20px;margin:0;cursor:pointer">
-                <input type="checkbox" \${chk(s.cachingEnabled)} onchange="state.gmail.cachingEnabled=this.checked; saveGmail()" style="opacity:0;width:0;height:0">
-                <span style="position:absolute;inset:0;background:\${s.cachingEnabled ? 'var(--primary)' : '#ccc'};border-radius:10px;transition:background 0.2s"></span>
-                <span style="position:absolute;left:\${s.cachingEnabled ? '18px' : '2px'};top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>
-              </label>
             </div>
           </div>
           <button class="btn btn-outline btn-sm" style="color:var(--destructive);border-color:rgba(239,68,68,0.3)" onclick="if(confirm('Disconnect Gmail? This will revoke all access tokens and disable Gmail access for all agents.')){disconnectSource('gmail')}">Disconnect</button>
@@ -1463,19 +1418,6 @@ function getIndexHtml(): string {
       render();
     }
 
-    function saveGmail() {
-      clearTimeout(_saveTimer);
-      _saveTimer = setTimeout(function() {
-        fetch('/api/sources/gmail/cache', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: state.gmail.cachingEnabled }),
-        }).then(function() {
-          render();
-        });
-      }, 300);
-    }
-
     function saveGithub() {
       clearTimeout(_saveTimer);
       _saveTimer = setTimeout(function() {
@@ -1735,7 +1677,6 @@ function getIndexHtml(): string {
     window.generateKey = generateKey;
     window.revokeKey = revokeKey;
     window.toggleRepo = toggleRepo;
-    window.saveGmail = saveGmail;
     window.saveGithub = saveGithub;
     window.chk = chk;
     window.fetchGithubRepos = fetchGithubRepos;

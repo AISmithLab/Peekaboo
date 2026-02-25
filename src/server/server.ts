@@ -40,7 +40,6 @@ export function createServer(deps: ServerDeps): Hono {
     db: deps.db,
     connectorRegistry: deps.connectorRegistry,
     config: deps.config,
-    encryptionKey: deps.encryptionKey,
     tokenManager: deps.tokenManager,
   });
   app.route('/', guiRoutes);

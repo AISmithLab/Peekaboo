@@ -6,13 +6,12 @@ import type { ConnectorRegistry, DataRow } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import { AuditLog } from '../audit/log.js';
 import { applyFilters, type QuickFilter } from '../filters.js';
-import { decryptField } from '../db/encryption.js';
 
 interface AppApiDeps {
   db: Database.Database;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
-  encryptionKey?: string;
+
 }
 
 interface ApiKeyRow {
@@ -65,22 +64,13 @@ export function createAppApi(deps: AppApiDeps): Hono<Env> {
       return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `Unknown source: "${source}"` } }, 404);
     }
 
-    const cacheEnabled = sourceConfig.cache?.enabled === true;
-
-    let rows: DataRow[];
-
-    if (cacheEnabled) {
-      // Read from cached_data
-      rows = readFromCache(deps.db, source, sourceConfig, deps.encryptionKey);
-    } else {
-      // Fetch live from connector
-      const connector = deps.connectorRegistry.get(source);
-      if (!connector) {
-        return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `No connector for source: "${source}"` } }, 404);
-      }
-      const boundary = sourceConfig.boundary ?? {};
-      rows = await connector.fetch(boundary);
+    // Fetch live from connector
+    const connector = deps.connectorRegistry.get(source);
+    if (!connector) {
+      return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `No connector for source: "${source}"` } }, 404);
     }
+    const boundary = sourceConfig.boundary ?? {};
+    const rows = await connector.fetch(boundary);
 
     // Load enabled filters and apply
     const filters = deps.db
@@ -145,46 +135,3 @@ function verifyApiKey(db: Database.Database, token: string): ApiKeyRow | null {
   return null;
 }
 
-function readFromCache(
-  db: Database.Database,
-  source: string,
-  sourceConfig: HubConfigParsed['sources'][string],
-  encryptionKey?: string,
-): DataRow[] {
-  let query = 'SELECT * FROM cached_data WHERE source = ?';
-  const params: unknown[] = [source];
-
-  if (sourceConfig?.boundary?.after) {
-    query += ' AND timestamp >= ?';
-    params.push(sourceConfig.boundary.after);
-  }
-
-  query += " AND (expires_at IS NULL OR expires_at > datetime('now'))";
-
-  const rows = db.prepare(query).all(...params) as Array<{
-    source: string;
-    source_item_id: string;
-    type: string;
-    timestamp: string;
-    data: string;
-  }>;
-
-  return rows.map((row) => {
-    let dataStr = row.data;
-    if (encryptionKey) {
-      try {
-        dataStr = decryptField(row.data, encryptionKey);
-      } catch {
-        // Data might not be encrypted, use as-is
-      }
-    }
-
-    return {
-      source: row.source,
-      source_item_id: row.source_item_id,
-      type: row.type,
-      timestamp: row.timestamp,
-      data: JSON.parse(dataStr),
-    };
-  });
-}

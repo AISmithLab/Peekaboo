@@ -39,7 +39,6 @@ describe('CLI init', () => {
     const names = tables.map(t => t.name);
     expect(names).toContain('api_keys');
     expect(names).toContain('manifests');
-    expect(names).toContain('cached_data');
     expect(names).toContain('staging');
     expect(names).toContain('audit_log');
     db.close();

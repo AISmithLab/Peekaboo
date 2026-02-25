@@ -20,7 +20,7 @@ describe('Database', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates a new database file with all 5 tables', () => {
+  it('creates a new database file with all tables', () => {
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -28,9 +28,9 @@ describe('Database', () => {
 
     expect(tableNames).toContain('api_keys');
     expect(tableNames).toContain('manifests');
-    expect(tableNames).toContain('cached_data');
     expect(tableNames).toContain('staging');
     expect(tableNames).toContain('audit_log');
+    expect(tableNames).not.toContain('cached_data');
   });
 
   it('api_keys table has correct columns', () => {
@@ -43,12 +43,6 @@ describe('Database', () => {
     const cols = db.prepare("PRAGMA table_info('manifests')").all() as { name: string }[];
     const colNames = cols.map((c) => c.name);
     expect(colNames).toEqual(['id', 'name', 'source', 'purpose', 'raw_text', 'explanation', 'status', 'created_at', 'updated_at']);
-  });
-
-  it('cached_data table has correct columns', () => {
-    const cols = db.prepare("PRAGMA table_info('cached_data')").all() as { name: string }[];
-    const colNames = cols.map((c) => c.name);
-    expect(colNames).toEqual(['id', 'source', 'source_item_id', 'type', 'timestamp', 'data', 'cached_at', 'expires_at']);
   });
 
   it('staging table has correct columns', () => {
@@ -88,17 +82,6 @@ describe('Database', () => {
     expect(row.status).toBe('inactive');
   });
 
-  it('inserts and reads cached_data', () => {
-    db.prepare(
-      'INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run('cd_1', 'gmail', 'msg_123', 'email', '2026-02-20T10:00:00Z', '{"title":"Test"}');
-
-    const row = db.prepare('SELECT * FROM cached_data WHERE id = ?').get('cd_1') as Record<string, unknown>;
-    expect(row.source).toBe('gmail');
-    expect(row.source_item_id).toBe('msg_123');
-    expect(JSON.parse(row.data as string)).toEqual({ title: 'Test' });
-  });
-
   it('inserts and reads staging', () => {
     db.prepare(
       'INSERT INTO staging (action_id, source, action_type, action_data, purpose) VALUES (?, ?, ?, ?, ?)',
@@ -127,17 +110,6 @@ describe('Database', () => {
     expect(rows[1].event).toBe('action_proposed');
   });
 
-  it('cached_data enforces unique (source, source_item_id) constraint', () => {
-    db.prepare(
-      'INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run('cd_1', 'gmail', 'msg_123', 'email', '2026-02-20T10:00:00Z', '{"v":1}');
-
-    expect(() =>
-      db.prepare(
-        'INSERT INTO cached_data (id, source, source_item_id, type, timestamp, data) VALUES (?, ?, ?, ?, ?, ?)',
-      ).run('cd_2', 'gmail', 'msg_123', 'email', '2026-02-20T10:00:00Z', '{"v":2}'),
-    ).toThrow();
-  });
 });
 
 describe('Encryption', () => {

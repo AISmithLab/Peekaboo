@@ -17,13 +17,11 @@ function makeConfig(): HubConfigParsed {
         enabled: true,
         owner_auth: { type: 'oauth2' },
         boundary: { after: '2026-01-01' },
-        cache: { enabled: false, encrypt: true },
       },
       github: {
         enabled: true,
         owner_auth: { type: 'personal_access_token' },
         boundary: { repos: ['myorg/frontend'] },
-        cache: { enabled: false, encrypt: true },
       },
     },
     port: 3000,

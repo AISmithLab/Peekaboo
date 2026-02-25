@@ -8,8 +8,6 @@
  *   npx pdh stop               Stop the background server
  *   npx pdh status             Check if the server is running
  *   npx pdh reset              Remove all generated files and start fresh
- *   npx pdh demo-load          Load synthetic demo emails and manifests
- *   npx pdh demo-unload        Remove all demo data
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -20,7 +18,7 @@ import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { hashSync } from 'bcryptjs';
 import { getDb } from './db/db.js';
-import { loadDemoData, unloadDemoData } from './demo.js';
+
 
 // --- Credentials file path ---
 
@@ -379,46 +377,6 @@ if (isDirectRun) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
     }
-  } else if (command === 'demo-load') {
-    try {
-      const creds = readCredentials();
-      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'pdh.db'))
-        ? creds.hubDir
-        : process.cwd();
-      const dbPath = resolve(hubDir, 'pdh.db');
-      if (!existsSync(dbPath)) {
-        throw new Error(`No pdh.db found at ${dbPath}. Run 'npx pdh init' first.`);
-      }
-      const db = getDb(dbPath);
-      const result = loadDemoData(db);
-      db.close();
-      console.log('\n  Demo data loaded successfully!\n');
-      console.log(`  Emails: ${result.emailCount} synthetic emails inserted`);
-      console.log('\n  Try: npx pdh start, then POST /app/v1/pull to query the demo data.');
-      console.log('  Configure quick filters in the GUI to control what agents see.\n');
-    } catch (err) {
-      console.error(`Error: ${(err as Error).message}`);
-      process.exit(1);
-    }
-  } else if (command === 'demo-unload') {
-    try {
-      const creds = readCredentials();
-      const hubDir = creds?.hubDir && existsSync(resolve(creds.hubDir, 'pdh.db'))
-        ? creds.hubDir
-        : process.cwd();
-      const dbPath = resolve(hubDir, 'pdh.db');
-      if (!existsSync(dbPath)) {
-        throw new Error(`No pdh.db found at ${dbPath}. Run 'npx pdh init' first.`);
-      }
-      const db = getDb(dbPath);
-      const result = unloadDemoData(db);
-      db.close();
-      console.log('\n  Demo data removed.\n');
-      console.log(`  Emails removed: ${result.emailsRemoved}\n`);
-    } catch (err) {
-      console.error(`Error: ${(err as Error).message}`);
-      process.exit(1);
-    }
   } else {
     console.log('PersonalDataHub CLI v0.1.0');
     console.log('\nUsage:');
@@ -427,7 +385,5 @@ if (isDirectRun) {
     console.log('  npx pdh stop              Stop the background server');
     console.log('  npx pdh status            Check if the server is running');
     console.log('  npx pdh reset             Remove all generated files and start fresh');
-    console.log('  npx pdh demo-load         Load synthetic demo emails and manifests');
-    console.log('  npx pdh demo-unload       Remove all demo data');
   }
 }

@@ -103,21 +103,6 @@ export function makeConfig(): HubConfigParsed {
         enabled: true,
         owner_auth: { type: 'oauth2' },
         boundary: { after: '2026-01-01' },
-        cache: { enabled: false, encrypt: true, sync_interval: '10m' },
-      },
-    },
-    port: 3000,
-  };
-}
-
-export function makeConfigWithCache(): HubConfigParsed {
-  return {
-    sources: {
-      gmail: {
-        enabled: true,
-        owner_auth: { type: 'oauth2' },
-        boundary: { after: '2026-01-01' },
-        cache: { enabled: true, encrypt: true, sync_interval: '10m' },
       },
     },
     port: 3000,

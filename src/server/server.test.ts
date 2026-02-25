@@ -53,7 +53,6 @@ function makeConfig(): HubConfigParsed {
         enabled: true,
         owner_auth: { type: 'oauth2' },
         boundary: { after: '2026-01-01' },
-        cache: { enabled: false, encrypt: true },
       },
     },
     port: 3000,

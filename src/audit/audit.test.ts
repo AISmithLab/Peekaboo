@@ -104,12 +104,4 @@ describe('AuditLog', () => {
     expect(typeof (audit as unknown as Record<string, unknown>).deleteEntry).toBe('undefined');
   });
 
-  it('logCacheWrite creates correct entry', () => {
-    audit.logCacheWrite('gmail', 50, 'system');
-
-    const entries = audit.getEntries();
-    expect(entries).toHaveLength(1);
-    expect(entries[0].event).toBe('cache_write');
-    expect(entries[0].details.rowsWritten).toBe(50);
-  });
 });

@@ -128,48 +128,6 @@ sources:
     expect(config.sources.gmail.enabled).toBe(false);
   });
 
-  it('parses config with cache block correctly', () => {
-    const yaml = `
-sources:
-  gmail:
-    enabled: true
-    owner_auth:
-      type: oauth2
-    boundary:
-      after: "2026-01-01"
-    cache:
-      enabled: true
-      sync_interval: "30m"
-      ttl: "7d"
-      encrypt: true
-`;
-    const configPath = join(tmpDir, 'config.yaml');
-    writeFileSync(configPath, yaml);
-    const config = loadConfig(configPath);
-
-    expect(config.sources.gmail.cache).toBeDefined();
-    expect(config.sources.gmail.cache!.enabled).toBe(true);
-    expect(config.sources.gmail.cache!.sync_interval).toBe('30m');
-    expect(config.sources.gmail.cache!.ttl).toBe('7d');
-    expect(config.sources.gmail.cache!.encrypt).toBe(true);
-  });
-
-  it('defaults cache to { enabled: false } when not specified', () => {
-    const yaml = `
-sources:
-  gmail:
-    enabled: true
-    owner_auth:
-      type: oauth2
-    boundary: {}
-`;
-    const configPath = join(tmpDir, 'config.yaml');
-    writeFileSync(configPath, yaml);
-    const config = loadConfig(configPath);
-
-    expect(config.sources.gmail.cache).toEqual({ enabled: false, encrypt: true });
-  });
-
   it('parses config with multiple sources', () => {
     const yaml = `
 sources:

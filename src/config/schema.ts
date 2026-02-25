@@ -1,12 +1,5 @@
 import { z } from 'zod';
 
-const cacheSchema = z.object({
-  enabled: z.boolean().default(false),
-  sync_interval: z.string().optional(),
-  ttl: z.string().optional(),
-  encrypt: z.boolean().default(true),
-});
-
 const ownerAuthSchema = z.object({
   type: z.string(),
   token: z.string().optional(),
@@ -40,7 +33,7 @@ const sourceConfigSchema = z.object({
   owner_auth: ownerAuthSchema,
   agent_identity: agentIdentitySchema.optional(),
   boundary: sourceBoundarySchema.default({}),
-  cache: cacheSchema.optional().default({ enabled: false, encrypt: true }),
+
 });
 
 const aiProviderSchema = z.object({

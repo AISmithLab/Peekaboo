@@ -31,10 +31,6 @@ export class AuditLog {
     this.insert('data_pull', source, { purpose, resultsReturned, initiatedBy });
   }
 
-  logCacheWrite(source: string, rowsWritten: number, initiatedBy: string): void {
-    this.insert('cache_write', source, { rowsWritten, initiatedBy });
-  }
-
   logActionProposed(
     actionId: string,
     source: string,

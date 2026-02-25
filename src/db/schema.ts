@@ -23,25 +23,6 @@ CREATE TABLE IF NOT EXISTS manifests (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`;
 
-const CREATE_CACHED_DATA = `
-CREATE TABLE IF NOT EXISTS cached_data (
-  id TEXT PRIMARY KEY,
-  source TEXT NOT NULL,
-  source_item_id TEXT NOT NULL,
-  type TEXT NOT NULL,
-  timestamp TEXT NOT NULL,
-  data TEXT NOT NULL,
-  cached_at TEXT NOT NULL DEFAULT (datetime('now')),
-  expires_at TEXT
-)`;
-
-const CREATE_CACHED_DATA_INDEXES = [
-  `CREATE INDEX IF NOT EXISTS idx_cached_data_source ON cached_data(source)`,
-  `CREATE INDEX IF NOT EXISTS idx_cached_data_type ON cached_data(type)`,
-  `CREATE INDEX IF NOT EXISTS idx_cached_data_timestamp ON cached_data(timestamp)`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_cached_data_source_item ON cached_data(source, source_item_id)`,
-];
-
 const CREATE_STAGING = `
 CREATE TABLE IF NOT EXISTS staging (
   action_id TEXT PRIMARY KEY,
@@ -106,10 +87,6 @@ export function createTables(db: Database.Database): void {
   // Migrate existing manifests tables missing new columns
   try { db.exec("ALTER TABLE manifests ADD COLUMN name TEXT NOT NULL DEFAULT ''"); } catch (_) { /* already exists */ }
   try { db.exec("ALTER TABLE manifests ADD COLUMN explanation TEXT NOT NULL DEFAULT ''"); } catch (_) { /* already exists */ }
-  db.exec(CREATE_CACHED_DATA);
-  for (const idx of CREATE_CACHED_DATA_INDEXES) {
-    db.exec(idx);
-  }
   db.exec(CREATE_STAGING);
   db.exec(CREATE_AUDIT_LOG);
   db.exec(CREATE_OAUTH_TOKENS);
