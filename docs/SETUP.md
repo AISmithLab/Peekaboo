@@ -151,7 +151,11 @@ mkdir -p ~/.pdh
 echo '{"hubUrl":"http://localhost:3000","hubDir":"/Users/personaldatahub/PersonalDataHub"}' > ~/.pdh/config.json
 ```
 
-Then add PersonalDataHub as an MCP server in your agent's config.
+Then connect your agent using one of the options below.
+
+### Option A: MCP (recommended)
+
+Works with Claude Code, Cursor, Windsurf, and any MCP-compatible agent.
 
 **Claude Code** — add to `.claude/settings.json`:
 
@@ -176,6 +180,12 @@ You can test it standalone:
 npx pdh mcp
 # Prints registered tools to stderr, then listens on stdio
 ```
+
+### Option B: OpenClaw
+
+If your agent uses the OpenClaw framework, PersonalDataHub is available as an OpenClaw skill (`@openclaw/personaldatahub`). The skill auto-discovers the running server via `~/.pdh/config.json` and registers `pull` and `propose` tools.
+
+See [`packages/personaldatahub/SKILL.md`](../packages/personaldatahub/SKILL.md) for tool details and configuration.
 
 ## Step 6: Verify
 
