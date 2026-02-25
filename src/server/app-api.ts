@@ -41,6 +41,11 @@ export function createAppApi(deps: AppApiDeps): Hono {
     if (!connector) {
       return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `No connector for source: "${source}"` } }, 404);
     }
+
+    if (!deps.tokenManager.hasToken(source)) {
+      return c.json({ ok: false, error: { code: 'SOURCE_NOT_CONNECTED', message: `Source "${source}" is not connected. Complete OAuth setup in the GUI first.` } }, 400);
+    }
+
     const boundary = sourceConfig.boundary ?? {};
     const rows = await connector.fetch(boundary);
 

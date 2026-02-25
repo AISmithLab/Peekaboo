@@ -130,6 +130,9 @@ export function setupE2eApp(gmailRows?: DataRow[], configOverride?: HubConfigPar
   const config = configOverride ?? makeConfig();
 
   const tokenManager = new TokenManager(db, 'e2e-test-secret');
+  // Store a mock token so the source counts as "connected"
+  tokenManager.storeToken('gmail', { access_token: 'mock-access', refresh_token: 'mock-refresh' });
+
   const app = createServer({
     db,
     connectorRegistry: registry,

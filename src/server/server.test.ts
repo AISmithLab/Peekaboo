@@ -93,7 +93,22 @@ describe('HTTP Server', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('POST /app/v1/pull without auth → 200 (agents do not need auth)', async () => {
+  it('POST /app/v1/pull for unconnected source → 400 with SOURCE_NOT_CONNECTED', async () => {
+    const res = await request(app, 'POST', '/app/v1/pull', {
+      source: 'gmail',
+      purpose: 'test',
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json() as { ok: boolean; error: { code: string; message: string } };
+    expect(json.ok).toBe(false);
+    expect(json.error.code).toBe('SOURCE_NOT_CONNECTED');
+    expect(json.error.message).toContain('not connected');
+  });
+
+  it('POST /app/v1/pull with connected source → 200', async () => {
+    const tokenManager = new TokenManager(db, 'test-secret');
+    tokenManager.storeToken('gmail', { access_token: 'tok', refresh_token: 'ref' });
+
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
       purpose: 'test',
@@ -105,6 +120,9 @@ describe('HTTP Server', () => {
   });
 
   it('POST /app/v1/pull with purpose → returns data, audit log entry', async () => {
+    const tokenManager = new TokenManager(db, 'test-secret');
+    tokenManager.storeToken('gmail', { access_token: 'tok', refresh_token: 'ref' });
+
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
       type: 'email',
