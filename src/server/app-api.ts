@@ -3,14 +3,15 @@ import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { ConnectorRegistry, DataRow } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
+import type { TokenManager } from '../auth/token-manager.js';
 import { AuditLog } from '../audit/log.js';
 import { applyFilters, type QuickFilter } from '../filters.js';
 
-interface AppApiDeps {
+export interface AppApiDeps {
   db: Database.Database;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
-
+  tokenManager: TokenManager;
 }
 
 export function createAppApi(deps: AppApiDeps): Hono {
@@ -87,6 +88,16 @@ export function createAppApi(deps: AppApiDeps): Hono {
       actionId,
       status: 'pending_review',
     });
+  });
+
+  // GET /sources — discover which sources are connected (have OAuth tokens)
+  app.get('/sources', (c) => {
+    const sources: Record<string, { connected: boolean }> = {};
+    for (const [name] of deps.connectorRegistry) {
+      const hasToken = deps.tokenManager.hasToken(name);
+      sources[name] = { connected: hasToken };
+    }
+    return c.json({ ok: true, sources });
   });
 
   return app;

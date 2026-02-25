@@ -15,17 +15,33 @@ always: false
 
 Access personal data from Gmail, GitHub, and other sources through the PersonalDataHub access control gateway. The data owner controls what the agent can see, which fields are visible, what gets redacted, and which actions are allowed.
 
+## MCP Setup (Recommended)
+
+PersonalDataHub provides an MCP server for native tool discovery. Add to your Claude Code config (`.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "personaldatahub": {
+      "command": "npx",
+      "args": ["pdh", "mcp"]
+    }
+  }
+}
+```
+
+This registers source-specific tools dynamically — only sources with connected OAuth tokens get tools.
+
 ## Tools
 
-### personal_data_pull
+### read_emails
+*(Gmail — requires connected Gmail OAuth)*
 
-Pull data from a source. Data is filtered and redacted according to the owner's access control policy.
+Pull emails from Gmail. Data is filtered and redacted according to the owner's access control policy.
 
 **Parameters:**
-- `source` (required) — The data source (e.g., `"gmail"`, `"github"`)
 - `purpose` (required) — Why this data is needed (logged for audit)
-- `type` (optional) — Data type (e.g., `"email"`, `"issue"`)
-- `query` (optional) — Search query in source-native syntax (e.g., `"is:unread from:alice"`)
+- `query` (optional) — Gmail search query (e.g., `"is:unread from:alice newer_than:7d"`)
 - `limit` (optional) — Maximum number of results
 
 **Example:**
@@ -33,27 +49,65 @@ Pull data from a source. Data is filtered and redacted according to the owner's 
 Pull my recent unread emails about the Q4 report.
 ```
 
-### personal_data_propose
+### draft_email
+*(Gmail — requires connected Gmail OAuth)*
 
-Propose an outbound action (e.g., draft email). The action is staged for the data owner to review and approve — it does NOT execute until approved.
+Draft an email via Gmail. The draft is staged for the data owner to review — it does NOT send until approved.
 
 **Parameters:**
-- `source` (required) — The source service (e.g., `"gmail"`)
-- `action_type` (required) — Action type (e.g., `"draft_email"`, `"send_email"`, `"reply_email"`)
 - `to` (required) — Recipient email address
 - `subject` (required) — Email subject
 - `body` (required) — Email body
 - `purpose` (required) — Why this action is being proposed (logged for audit)
 - `in_reply_to` (optional) — Message ID for threading
 
-**Example:**
-```
-Draft a reply to Alice's Q4 report email thanking her for the numbers.
-```
+### send_email
+*(Gmail — requires connected Gmail OAuth)*
+
+Send an email via Gmail. The action is staged for the data owner to review — it does NOT execute until approved.
+
+**Parameters:**
+- `to` (required) — Recipient email address
+- `subject` (required) — Email subject
+- `body` (required) — Email body
+- `purpose` (required) — Why this action is being proposed (logged for audit)
+- `in_reply_to` (optional) — Message ID for threading
+
+### reply_to_email
+*(Gmail — requires connected Gmail OAuth)*
+
+Reply to an email via Gmail. The reply is staged for the data owner to review — it does NOT send until approved.
+
+**Parameters:**
+- `to` (required) — Recipient email address
+- `subject` (required) — Email subject
+- `body` (required) — Email body
+- `in_reply_to` (required) — Message ID of the email being replied to
+- `purpose` (required) — Why this action is being proposed (logged for audit)
+
+### search_github_issues
+*(GitHub — requires connected GitHub OAuth)*
+
+Search GitHub issues. Data is filtered according to the owner's access control policy.
+
+**Parameters:**
+- `purpose` (required) — Why this data is needed (logged for audit)
+- `query` (optional) — Search query for issues
+- `limit` (optional) — Maximum number of results
+
+### search_github_prs
+*(GitHub — requires connected GitHub OAuth)*
+
+Search GitHub pull requests. Data is filtered according to the owner's access control policy.
+
+**Parameters:**
+- `purpose` (required) — Why this data is needed (logged for audit)
+- `query` (optional) — Search query for pull requests
+- `limit` (optional) — Maximum number of results
 
 ## Direct API Fallback
 
-If the tools above are not available, you can call the PersonalDataHub API directly via HTTP.
+If the MCP tools above are not available, you can call the PersonalDataHub API directly via HTTP.
 
 **Config:** Read `~/.pdh/config.json` to get `hubUrl`.
 

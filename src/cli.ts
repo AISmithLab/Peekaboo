@@ -7,6 +7,7 @@
  *   npx pdh start              Start the server in the background
  *   npx pdh stop               Stop the background server
  *   npx pdh status             Check if the server is running
+ *   npx pdh mcp                Start a stdio MCP server for agent access
  *   npx pdh reset              Remove all generated files and start fresh
  */
 
@@ -360,6 +361,14 @@ if (isDirectRun) {
     } else {
       console.log('\n  PersonalDataHub server is not running.\n');
     }
+  } else if (command === 'mcp') {
+    try {
+      const { startMcpServer } = await import('./mcp/server.js');
+      await startMcpServer();
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
   } else if (command === 'reset') {
     try {
       const removed = reset();
@@ -383,6 +392,7 @@ if (isDirectRun) {
     console.log('  npx pdh start             Start the server in the background');
     console.log('  npx pdh stop              Stop the background server');
     console.log('  npx pdh status            Check if the server is running');
+    console.log('  npx pdh mcp               Start a stdio MCP server for agent access');
     console.log('  npx pdh reset             Remove all generated files and start fresh');
   }
 }

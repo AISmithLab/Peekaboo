@@ -166,4 +166,30 @@ describe('HTTP Server', () => {
     const json = await res.json() as { ok: boolean };
     expect(json.ok).toBe(true);
   });
+
+  describe('GET /app/v1/sources', () => {
+    it('returns sources with connected status based on oauth tokens', async () => {
+      const res = await app.request('/app/v1/sources');
+      expect(res.status).toBe(200);
+      const json = await res.json() as { ok: boolean; sources: Record<string, { connected: boolean }> };
+      expect(json.ok).toBe(true);
+      // gmail is in the registry but has no token stored
+      expect(json.sources.gmail).toEqual({ connected: false });
+    });
+
+    it('returns connected: true when source has an oauth token', async () => {
+      // Store a token for gmail
+      const tokenManager = new TokenManager(db, 'test-secret');
+      tokenManager.storeToken('gmail', {
+        access_token: 'test-token',
+        refresh_token: 'test-refresh',
+      });
+
+      const res = await app.request('/app/v1/sources');
+      expect(res.status).toBe(200);
+      const json = await res.json() as { ok: boolean; sources: Record<string, { connected: boolean }> };
+      expect(json.ok).toBe(true);
+      expect(json.sources.gmail).toEqual({ connected: true });
+    });
+  });
 });
