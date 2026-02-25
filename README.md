@@ -215,12 +215,14 @@ src/
 ## CLI Commands
 
 ```
-npx pdh init [app-name]   Bootstrap a new installation
-npx pdh start             Start the server in the background
-npx pdh stop              Stop the background server
-npx pdh status            Check if the server is running
-npx pdh mcp               Start a stdio MCP server for agent access
-npx pdh reset             Remove all generated files and start fresh
+npx pdh init [app-name]     Bootstrap a new installation
+npx pdh start               Start the server in the background
+npx pdh stop                Stop the background server
+npx pdh status              Check if the server is running
+npx pdh mcp                 Start a stdio MCP server for agent access
+npx pdh install-service     Install a systemd/launchd service for auto-start on reboot
+npx pdh uninstall-service   Remove the auto-start service
+npx pdh reset               Remove all generated files and start fresh
 ```
 
 ## Security Model

@@ -72,12 +72,40 @@ npx pdh status
 # or: curl http://localhost:3000/health
 ```
 
-The server does **not** auto-start on reboot — run `npx pdh start` again after restarting (or set up a launchd/systemd service).
+The server does **not** auto-start on reboot by default. You can either run `npx pdh start` after each restart, or install a system service (see below).
 
 You can now exit the `personaldatahub` shell:
 
 ```bash
 exit
+```
+
+### Optional: Auto-start on reboot
+
+To have PersonalDataHub start automatically on boot, install a system service. Run this as your **main user** (not `personaldatahub`), since it requires sudo:
+
+```bash
+sudo npx pdh install-service
+```
+
+This creates a systemd service (Linux) or launchd daemon (macOS) that runs the server as the `personaldatahub` user.
+
+**Manage the service:**
+
+```bash
+# Linux
+sudo systemctl status personaldatahub    # check status
+sudo systemctl restart personaldatahub   # restart
+journalctl -u personaldatahub -f         # view logs
+
+# macOS
+sudo launchctl list | grep personaldatahub   # check status
+```
+
+**Remove the service:**
+
+```bash
+sudo npx pdh uninstall-service
 ```
 
 ## Step 4: Connect Data Sources

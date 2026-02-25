@@ -8,6 +8,8 @@
  *   npx pdh stop               Stop the background server
  *   npx pdh status             Check if the server is running
  *   npx pdh mcp                Start a stdio MCP server for agent access
+ *   npx pdh install-service    Install a systemd/launchd service for auto-start
+ *   npx pdh uninstall-service  Remove the auto-start service
  *   npx pdh reset              Remove all generated files and start fresh
  */
 
@@ -327,6 +329,111 @@ export function reset(hubDir?: string): string[] {
   return removed;
 }
 
+// --- Service install / uninstall ---
+
+const SYSTEMD_PATH = '/etc/systemd/system/personaldatahub.service';
+const LAUNCHD_PATH = '/Library/LaunchDaemons/com.personaldatahub.server.plist';
+
+/**
+ * Install a system service so PersonalDataHub starts automatically on reboot.
+ * Creates a systemd unit (Linux) or launchd plist (macOS).
+ * Requires sudo.
+ */
+export function installService(hubDir?: string): { platform: string; servicePath: string } {
+  const dir = hubDir ?? readConfig()?.hubDir ?? process.cwd();
+  const nodePath = process.execPath;
+  const os = process.platform;
+
+  if (os === 'linux') {
+    const unit = [
+      '[Unit]',
+      'Description=PersonalDataHub Server',
+      'After=network.target',
+      '',
+      '[Service]',
+      'Type=simple',
+      `User=${PDH_USER}`,
+      `WorkingDirectory=${dir}`,
+      `ExecStart=${nodePath} dist/index.js`,
+      'Restart=on-failure',
+      'RestartSec=5',
+      '',
+      '[Install]',
+      'WantedBy=multi-user.target',
+      '',
+    ].join('\n');
+
+    writeFileSync(SYSTEMD_PATH, unit, 'utf-8');
+    execSync('systemctl daemon-reload', { stdio: 'inherit' });
+    execSync('systemctl enable personaldatahub', { stdio: 'inherit' });
+
+    return { platform: 'linux', servicePath: SYSTEMD_PATH };
+  } else if (os === 'darwin') {
+    const plist = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+      '<plist version="1.0">',
+      '<dict>',
+      '  <key>Label</key>',
+      '  <string>com.personaldatahub.server</string>',
+      '  <key>UserName</key>',
+      `  <string>${PDH_USER}</string>`,
+      '  <key>WorkingDirectory</key>',
+      `  <string>${dir}</string>`,
+      '  <key>ProgramArguments</key>',
+      '  <array>',
+      `    <string>${nodePath}</string>`,
+      '    <string>dist/index.js</string>',
+      '  </array>',
+      '  <key>RunAtLoad</key>',
+      '  <true/>',
+      '  <key>KeepAlive</key>',
+      '  <true/>',
+      '  <key>StandardOutPath</key>',
+      `  <string>${resolve(dir, 'pdh.log')}</string>`,
+      '  <key>StandardErrorPath</key>',
+      `  <string>${resolve(dir, 'pdh.log')}</string>`,
+      '</dict>',
+      '</plist>',
+      '',
+    ].join('\n');
+
+    writeFileSync(LAUNCHD_PATH, plist, 'utf-8');
+    execSync(`launchctl load ${LAUNCHD_PATH}`, { stdio: 'inherit' });
+
+    return { platform: 'darwin', servicePath: LAUNCHD_PATH };
+  } else {
+    throw new Error(`Unsupported platform: ${os}. Service install requires macOS or Linux.`);
+  }
+}
+
+/**
+ * Uninstall the system service created by installService().
+ */
+export function uninstallService(): { removed: boolean; servicePath: string } {
+  const os = process.platform;
+
+  if (os === 'linux') {
+    if (!existsSync(SYSTEMD_PATH)) {
+      return { removed: false, servicePath: SYSTEMD_PATH };
+    }
+    execSync('systemctl stop personaldatahub', { stdio: 'inherit' });
+    execSync('systemctl disable personaldatahub', { stdio: 'inherit' });
+    unlinkSync(SYSTEMD_PATH);
+    execSync('systemctl daemon-reload', { stdio: 'inherit' });
+    return { removed: true, servicePath: SYSTEMD_PATH };
+  } else if (os === 'darwin') {
+    if (!existsSync(LAUNCHD_PATH)) {
+      return { removed: false, servicePath: LAUNCHD_PATH };
+    }
+    execSync(`launchctl unload ${LAUNCHD_PATH}`, { stdio: 'inherit' });
+    unlinkSync(LAUNCHD_PATH);
+    return { removed: true, servicePath: LAUNCHD_PATH };
+  } else {
+    throw new Error(`Unsupported platform: ${os}. Service uninstall requires macOS or Linux.`);
+  }
+}
+
 // --- CLI runner (only executes when this file is the entry point) ---
 // Resolve symlinks so this works with npx (which symlinks node_modules/.bin/pdh → dist/cli.js)
 const isDirectRun = (() => {
@@ -420,6 +527,42 @@ if (isDirectRun) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);
     }
+  } else if (command === 'install-service') {
+    try {
+      const result = installService();
+      console.log(`\n  Service installed (${result.platform}).`);
+      console.log(`  Service file: ${result.servicePath}`);
+      console.log('  PersonalDataHub will start automatically on reboot.');
+      if (result.platform === 'linux') {
+        console.log('\n  Manage with:');
+        console.log('    sudo systemctl status personaldatahub');
+        console.log('    sudo systemctl stop personaldatahub');
+        console.log('    sudo systemctl restart personaldatahub');
+        console.log('    journalctl -u personaldatahub -f');
+      } else {
+        console.log('\n  Manage with:');
+        console.log('    sudo launchctl list | grep personaldatahub');
+        console.log(`    sudo launchctl unload ${result.servicePath}`);
+        console.log(`    sudo launchctl load ${result.servicePath}`);
+      }
+      console.log('\n  To remove: npx pdh uninstall-service\n');
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  } else if (command === 'uninstall-service') {
+    try {
+      const result = uninstallService();
+      if (result.removed) {
+        console.log(`\n  Service removed: ${result.servicePath}`);
+        console.log('  PersonalDataHub will no longer start on reboot.\n');
+      } else {
+        console.log('\n  No service found to remove.\n');
+      }
+    } catch (err) {
+      console.error(`Error: ${(err as Error).message}`);
+      process.exit(1);
+    }
   } else if (command === 'reset') {
     try {
       const removed = reset();
@@ -444,6 +587,8 @@ if (isDirectRun) {
     console.log('  npx pdh stop              Stop the background server');
     console.log('  npx pdh status            Check if the server is running');
     console.log('  npx pdh mcp               Start a stdio MCP server for agent access');
+    console.log('  npx pdh install-service   Install a systemd/launchd service for auto-start');
+    console.log('  npx pdh uninstall-service Remove the auto-start service');
     console.log('  npx pdh reset             Remove all generated files and start fresh');
   }
 }
