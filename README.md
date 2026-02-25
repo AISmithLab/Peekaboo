@@ -257,8 +257,7 @@ For the full threat model with attack/mitigation tables for Gmail and GitHub, se
 - [OAuth Setup](docs/OAUTH-SETUP.md) — using your own OAuth credentials instead of the defaults
 - [Development Guide](docs/DEVELOPMENT.md) — codebase structure, adding connectors, testing
 - [Security & Threat Model](docs/SECURITY.md) — detailed attack surface analysis for Gmail and GitHub
-- [Design Doc v1](docs/architecture-design/design-v1.md) — full architecture and design rationale
-- [Design Doc v2](docs/architecture-design/design-v2.md) — deployment, auto-start, and browser session security
+- [Design Doc v2](docs/architecture-design/design-v2.md) — full architecture and design rationale
 
 ## License
 
