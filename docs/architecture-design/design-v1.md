@@ -6,7 +6,7 @@ v0 had a cache layer, per-agent API keys, and an OpenClaw-specific plugin for to
 
 ### Removed
 - **Cache layer** — `cached_data` table, background sync scheduler, encryption for cached data. `POST /pull` always fetches live from the connector.
-- **Per-agent API keys** — the `api_keys` table, bcrypt auth middleware, `~/.pdh/credentials.json` key field, and the auto-key-creation dance. Agents no longer need credentials to call the Hub.
+- **Per-agent API keys** — the `api_keys` table, bcrypt auth middleware, `~/.pdh/config.json` key field, and the auto-key-creation dance. Agents no longer need credentials to call the Hub.
 
 ### Added
 - **Owner authentication** — password-based login for the GUI, session cookie for admin endpoints.
@@ -18,26 +18,36 @@ v0 had a cache layer, per-agent API keys, and an OpenClaw-specific plugin for to
 ## Architecture overview
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    Owner's machine                       │
-│                                                          │
-│  ┌────────────────────┐     ┌─────────────────────────┐  │
-│  │  personaldatahub    │     │  main user              │  │
-│  │  user               │     │                         │  │
-│  │  PersonalDataHub    │◄────│  Agent (OpenClaw)       │  │
-│  │  server             │     │  Agent (Claude Code)    │  │
-│  │  pdh.db             │     │  Agent (Cursor)         │  │
-│  │  OAuth tokens       │     │  Owner's browser ──►    │  │
-│  │  (0600 perms)       │     │    (login via password) │  │
-│  └────────┬───────────┘     └─────────────────────────┘  │
-│           │                                              │
-│           │ OAuth (owner's tokens)                       │
-│           ▼                                              │
-│  ┌────────────────────┐                                  │
-│  │ Gmail API          │                                  │
-│  │ GitHub API         │                                  │
-│  └────────────────────┘                                  │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                    Owner's machine                            │
+│                                                              │
+│  ┌─────────────────────┐                                     │
+│  │  personaldatahub     │                                     │
+│  │  OS user             │                                     │
+│  │                      │                                     │
+│  │  PersonalDataHub     │◄──── HTTP localhost:3000 ────┐      │
+│  │  server              │                              │      │
+│  │  pdh.db              │                              │      │
+│  │  OAuth tokens        │                              │      │
+│  │  (0600 perms)        │                              │      │
+│  └────────┬─────────────┘                              │      │
+│           │                                            │      │
+│           │ OAuth (owner's tokens)                     │      │
+│           ▼                                            │      │
+│  ┌────────────────────┐     ┌────────────────────────┐ │      │
+│  │ Gmail API          │     │  main user             │ │      │
+│  │ GitHub API         │     │                        │ │      │
+│  └────────────────────┘     │  MCP Server (stdio) ───┘       │
+│                             │    ↑                    │       │
+│                             │    │ stdio              │       │
+│                             │  Agent (Claude Code)    │       │
+│                             │  Agent (Cursor)         │       │
+│                             │  Agent (Windsurf)       │       │
+│                             │                         │       │
+│                             │  Owner's browser ──►    │       │
+│                             │    (login via password) │       │
+│                             └─────────────────────────┘       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Process isolation

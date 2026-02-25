@@ -1,9 +1,9 @@
 /**
- * Hub discovery and auto-setup utilities.
+ * Hub discovery and setup utilities.
  *
- * Used by the skill to detect a running PersonalDataHub and create
- * an API key for itself. All communication is over HTTP — no dependency
- * on the main PersonalDataHub source.
+ * Used by the skill to detect a running PersonalDataHub.
+ * All communication is over HTTP — no dependency on the main
+ * PersonalDataHub source.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -15,31 +15,24 @@ export interface HealthCheckResult {
   version?: string;
 }
 
-export interface CreateApiKeyResult {
-  ok: boolean;
-  id: string;
-  key: string;
-}
-
-export interface Credentials {
+export interface HubConfig {
   hubUrl: string;
-  apiKey: string;
   hubDir?: string;
 }
 
-/** Path to the credentials file written by `npx pdh init`. */
-export const CREDENTIALS_PATH = join(homedir(), '.pdh', 'credentials.json');
+/** Path to the config file written by `npx pdh init`. */
+export const CONFIG_PATH = join(homedir(), '.pdh', 'config.json');
 
 /**
- * Read credentials from ~/.pdh/credentials.json.
+ * Read config from ~/.pdh/config.json.
  * Returns null if the file doesn't exist or is malformed.
  */
-export function readCredentials(): Credentials | null {
+export function readConfig(): HubConfig | null {
   try {
-    if (!existsSync(CREDENTIALS_PATH)) return null;
-    const raw = readFileSync(CREDENTIALS_PATH, 'utf-8');
+    if (!existsSync(CONFIG_PATH)) return null;
+    const raw = readFileSync(CONFIG_PATH, 'utf-8');
     const parsed = JSON.parse(raw);
-    if (parsed.hubUrl && parsed.apiKey) return parsed as Credentials;
+    if (parsed.hubUrl) return parsed as HubConfig;
     return null;
   } catch {
     return null;
@@ -73,47 +66,6 @@ export async function checkHub(hubUrl: string, timeoutMs = 3000): Promise<Health
   } catch {
     return { ok: false };
   }
-}
-
-/**
- * Create an API key on the hub for the given application name.
- * Calls POST /api/keys — the GUI endpoint has no auth (it's owner-local).
- */
-export async function createApiKey(hubUrl: string, appName: string): Promise<CreateApiKeyResult> {
-  const url = hubUrl.replace(/\/+$/, '');
-
-  const res = await fetch(`${url}/api/keys`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: appName }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to create API key: ${res.status} ${text}`);
-  }
-
-  return res.json() as Promise<CreateApiKeyResult>;
-}
-
-/**
- * Attempt full auto-setup: check hub health, then create an API key.
- * Returns null if the hub is not reachable.
- */
-export async function autoSetup(
-  hubUrl: string,
-  appName: string,
-): Promise<{ hubUrl: string; apiKey: string } | null> {
-  const health = await checkHub(hubUrl);
-  if (!health.ok) {
-    return null;
-  }
-
-  const keyResult = await createApiKey(hubUrl, appName);
-  return {
-    hubUrl,
-    apiKey: keyResult.key,
-  };
 }
 
 /** Common default hub URLs to probe during discovery. */

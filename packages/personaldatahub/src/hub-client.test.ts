@@ -9,7 +9,6 @@ describe('HubClient', () => {
     mockFetch = vi.fn();
     client = new HubClient({
       hubUrl: 'http://localhost:7007',
-      apiKey: 'pk_test_abc123',
     });
     vi.stubGlobal('fetch', mockFetch);
   });
@@ -49,7 +48,6 @@ describe('HubClient', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer pk_test_abc123',
         },
         body: JSON.stringify({
           source: 'gmail',
@@ -106,7 +104,6 @@ describe('HubClient', () => {
     it('strips trailing slash from hub URL', async () => {
       const clientWithSlash = new HubClient({
         hubUrl: 'http://localhost:7007/',
-        apiKey: 'pk_test',
       });
 
       mockFetch.mockResolvedValue({
@@ -149,7 +146,6 @@ describe('HubClient', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer pk_test_abc123',
         },
         body: JSON.stringify({
           source: 'gmail',

@@ -38,16 +38,13 @@ export interface ProposeResult {
 
 export interface HubClientConfig {
   hubUrl: string;
-  apiKey: string;
 }
 
 export class HubClient {
   private hubUrl: string;
-  private apiKey: string;
 
   constructor(config: HubClientConfig) {
     this.hubUrl = config.hubUrl.replace(/\/+$/, '');
-    this.apiKey = config.apiKey;
   }
 
   /**
@@ -59,7 +56,6 @@ export class HubClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(params),
     });
@@ -81,7 +77,6 @@ export class HubClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(params),
     });

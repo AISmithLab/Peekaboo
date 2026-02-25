@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { rmSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import Database from 'better-sqlite3';
-import { init, reset, writeCredentials, readCredentials, CREDENTIALS_PATH, CREDENTIALS_DIR } from './cli.js';
+import { init, reset, writeConfig, readConfig, CONFIG_PATH, CONFIG_DIR } from './cli.js';
 import { makeTmpDir } from './test-utils.js';
 
 describe('CLI init', () => {
@@ -68,19 +68,19 @@ describe('CLI init', () => {
     expect(decoded.length).toBe(32);
   });
 
-  it('writes credentials to ~/.pdh/credentials.json', async () => {
+  it('writes config to ~/.pdh/config.json', async () => {
     const result = await init(tmpDir);
-    expect(existsSync(CREDENTIALS_PATH)).toBe(true);
-    const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf-8'));
-    expect(creds.hubUrl).toBe('http://localhost:3000');
-    expect(creds.hubDir).toBe(tmpDir);
-    expect(creds).not.toHaveProperty('apiKey');
+    expect(existsSync(CONFIG_PATH)).toBe(true);
+    const config = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+    expect(config.hubUrl).toBe('http://localhost:3000');
+    expect(config.hubDir).toBe(tmpDir);
+    expect(config).not.toHaveProperty('apiKey');
   });
 
-  it('writes credentials with custom port', async () => {
+  it('writes config with custom port', async () => {
     await init(tmpDir, { port: 7007 });
-    const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf-8'));
-    expect(creds.hubUrl).toBe('http://localhost:7007');
+    const config = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+    expect(config.hubUrl).toBe('http://localhost:7007');
   });
 
   it('falls back to sources: {} when credential fetch fails', async () => {
@@ -94,16 +94,16 @@ describe('CLI init', () => {
 
 describe('CLI reset', () => {
   let tmpDir: string;
-  const credBackup = CREDENTIALS_PATH + '.backup-reset';
-  const pidPath = join(CREDENTIALS_DIR, 'server.pid');
+  const configBackup = CONFIG_PATH + '.backup-reset';
+  const pidPath = join(CONFIG_DIR, 'server.pid');
   const pidBackup = pidPath + '.backup-reset';
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
-    // Back up credential files so reset tests don't interfere
-    if (existsSync(CREDENTIALS_PATH)) {
-      writeFileSync(credBackup, readFileSync(CREDENTIALS_PATH, 'utf-8'), 'utf-8');
-      rmSync(CREDENTIALS_PATH);
+    // Back up config files so reset tests don't interfere
+    if (existsSync(CONFIG_PATH)) {
+      writeFileSync(configBackup, readFileSync(CONFIG_PATH, 'utf-8'), 'utf-8');
+      rmSync(CONFIG_PATH);
     }
     if (existsSync(pidPath)) {
       writeFileSync(pidBackup, readFileSync(pidPath, 'utf-8'), 'utf-8');
@@ -114,9 +114,9 @@ describe('CLI reset', () => {
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
     // Restore backups
-    if (existsSync(credBackup)) {
-      writeFileSync(CREDENTIALS_PATH, readFileSync(credBackup, 'utf-8'), 'utf-8');
-      rmSync(credBackup);
+    if (existsSync(configBackup)) {
+      writeFileSync(CONFIG_PATH, readFileSync(configBackup, 'utf-8'), 'utf-8');
+      rmSync(configBackup);
     }
     if (existsSync(pidBackup)) {
       writeFileSync(pidPath, readFileSync(pidBackup, 'utf-8'), 'utf-8');
@@ -124,20 +124,20 @@ describe('CLI reset', () => {
     }
   });
 
-  it('removes generated hub files and credentials', async () => {
+  it('removes generated hub files and config', async () => {
     await init(tmpDir);
     // All hub files should exist
     expect(existsSync(join(tmpDir, '.env'))).toBe(true);
     expect(existsSync(join(tmpDir, 'hub-config.yaml'))).toBe(true);
     expect(existsSync(join(tmpDir, 'pdh.db'))).toBe(true);
-    expect(existsSync(CREDENTIALS_PATH)).toBe(true);
+    expect(existsSync(CONFIG_PATH)).toBe(true);
 
     const removed = reset(tmpDir);
     expect(removed.length).toBeGreaterThanOrEqual(4);
     expect(existsSync(join(tmpDir, '.env'))).toBe(false);
     expect(existsSync(join(tmpDir, 'hub-config.yaml'))).toBe(false);
     expect(existsSync(join(tmpDir, 'pdh.db'))).toBe(false);
-    expect(existsSync(CREDENTIALS_PATH)).toBe(false);
+    expect(existsSync(CONFIG_PATH)).toBe(false);
   });
 
   it('allows init to succeed after reset', async () => {
@@ -154,13 +154,13 @@ describe('CLI reset', () => {
   });
 });
 
-describe('Credentials file', () => {
-  const backupPath = CREDENTIALS_PATH + '.backup';
+describe('Config file', () => {
+  const backupPath = CONFIG_PATH + '.backup';
 
   beforeEach(() => {
-    // Back up existing credentials if present
-    if (existsSync(CREDENTIALS_PATH)) {
-      const content = readFileSync(CREDENTIALS_PATH, 'utf-8');
+    // Back up existing config if present
+    if (existsSync(CONFIG_PATH)) {
+      const content = readFileSync(CONFIG_PATH, 'utf-8');
       writeFileSync(backupPath, content, 'utf-8');
     }
   });
@@ -169,27 +169,27 @@ describe('Credentials file', () => {
     // Restore backup
     if (existsSync(backupPath)) {
       const content = readFileSync(backupPath, 'utf-8');
-      writeFileSync(CREDENTIALS_PATH, content, 'utf-8');
+      writeFileSync(CONFIG_PATH, content, 'utf-8');
       rmSync(backupPath);
     }
   });
 
-  it('writeCredentials creates the file and readCredentials reads it', () => {
-    writeCredentials({ hubUrl: 'http://localhost:9999', hubDir: '/tmp' });
-    const creds = readCredentials();
-    expect(creds).not.toBeNull();
-    expect(creds!.hubUrl).toBe('http://localhost:9999');
-    expect(creds!.hubDir).toBe('/tmp');
+  it('writeConfig creates the file and readConfig reads it', () => {
+    writeConfig({ hubUrl: 'http://localhost:9999', hubDir: '/tmp' });
+    const config = readConfig();
+    expect(config).not.toBeNull();
+    expect(config!.hubUrl).toBe('http://localhost:9999');
+    expect(config!.hubDir).toBe('/tmp');
   });
 
-  it('readCredentials returns null for missing file', () => {
+  it('readConfig returns null for missing file', () => {
     // Write something invalid first, then remove
-    if (existsSync(CREDENTIALS_PATH)) {
-      rmSync(CREDENTIALS_PATH);
+    if (existsSync(CONFIG_PATH)) {
+      rmSync(CONFIG_PATH);
     }
-    const creds = readCredentials();
+    const config = readConfig();
     // May or may not be null depending on whether init was run before
     // Just ensure it doesn't throw
-    expect(creds === null || typeof creds === 'object').toBe(true);
+    expect(config === null || typeof config === 'object').toBe(true);
   });
 });

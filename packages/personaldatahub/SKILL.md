@@ -55,12 +55,11 @@ Draft a reply to Alice's Q4 report email thanking her for the numbers.
 
 If the tools above are not available, you can call the PersonalDataHub API directly via HTTP.
 
-**Credentials:** Read `~/.pdh/credentials.json` to get `hubUrl` and `apiKey`.
+**Config:** Read `~/.pdh/config.json` to get `hubUrl`.
 
 **Pull data:**
 ```bash
 curl -X POST <hubUrl>/app/v1/pull \
-  -H "Authorization: Bearer <apiKey>" \
   -H "Content-Type: application/json" \
   -d '{"source": "gmail", "purpose": "reason for pulling data"}'
 ```
@@ -68,7 +67,6 @@ curl -X POST <hubUrl>/app/v1/pull \
 **Propose an action:**
 ```bash
 curl -X POST <hubUrl>/app/v1/propose \
-  -H "Authorization: Bearer <apiKey>" \
   -H "Content-Type: application/json" \
   -d '{"source": "gmail", "action_type": "draft_email", "action_data": {"to": "...", "subject": "...", "body": "..."}, "purpose": "reason for action"}'
 ```
@@ -83,7 +81,7 @@ curl <hubUrl>/health
 If the server is not running, find and start it:
 ```bash
 # Check where PersonalDataHub is installed
-cat ~/.pdh/credentials.json   # look at hubDir
+cat ~/.pdh/config.json   # look at hubDir
 # Start the server
 cd <hubDir> && node dist/index.js
 ```
@@ -92,12 +90,12 @@ cd <hubDir> && node dist/index.js
 
 The install hook bootstraps PersonalDataHub automatically:
 1. Installs dependencies, builds the project, initializes the database
-2. Creates an API key and saves it to `~/.pdh/credentials.json`
+2. Saves hub URL and directory to `~/.pdh/config.json`
 3. Starts the server in the background
 
 After installation, open `http://localhost:3000` to connect Gmail/GitHub via OAuth.
 
-Agents read credentials automatically from `~/.pdh/credentials.json` — no manual configuration needed.
+Agents read config automatically from `~/.pdh/config.json` — no manual configuration needed.
 
 ## Query Syntax (Gmail)
 

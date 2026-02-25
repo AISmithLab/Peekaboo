@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { checkHub, createApiKey, autoSetup, discoverHub, readCredentials, DEFAULT_HUB_URLS, CREDENTIALS_PATH } from './setup.js';
+import { checkHub, discoverHub, readConfig, DEFAULT_HUB_URLS, CONFIG_PATH } from './setup.js';
 
 describe('Setup Module', () => {
   let mockFetch: ReturnType<typeof vi.fn>;
@@ -51,60 +51,6 @@ describe('Setup Module', () => {
     });
   });
 
-  describe('createApiKey', () => {
-    it('sends POST /api/keys and returns the key', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ ok: true, id: 'openclaw-agent', key: 'pk_abc123' }),
-      });
-
-      const result = await createApiKey('http://localhost:3000', 'OpenClaw Agent');
-      expect(result.ok).toBe(true);
-      expect(result.key).toBe('pk_abc123');
-
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.name).toBe('OpenClaw Agent');
-    });
-
-    it('throws on non-ok response', async () => {
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal error'),
-      });
-
-      await expect(createApiKey('http://localhost:3000', 'Test')).rejects.toThrow(
-        'Failed to create API key: 500 Internal error',
-      );
-    });
-  });
-
-  describe('autoSetup', () => {
-    it('returns hubUrl and apiKey when hub is reachable', async () => {
-      mockFetch
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ ok: true, version: '0.1.0' }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ ok: true, id: 'openclaw', key: 'pk_xyz789' }),
-        });
-
-      const result = await autoSetup('http://localhost:3000', 'OpenClaw');
-      expect(result).toEqual({
-        hubUrl: 'http://localhost:3000',
-        apiKey: 'pk_xyz789',
-      });
-    });
-
-    it('returns null when hub is not reachable', async () => {
-      mockFetch.mockRejectedValue(new Error('ECONNREFUSED'));
-      const result = await autoSetup('http://localhost:3000', 'OpenClaw');
-      expect(result).toBeNull();
-    });
-  });
-
   describe('discoverHub', () => {
     it('returns the first URL that responds', async () => {
       mockFetch
@@ -130,16 +76,16 @@ describe('Setup Module', () => {
     });
   });
 
-  describe('readCredentials', () => {
-    it('returns credentials from file or null without throwing', () => {
-      // This test just verifies readCredentials doesn't throw
-      const creds = readCredentials();
-      expect(creds === null || (typeof creds === 'object' && !!creds.hubUrl && !!creds.apiKey)).toBe(true);
+  describe('readConfig', () => {
+    it('returns config from file or null without throwing', () => {
+      // This test just verifies readConfig doesn't throw
+      const cfg = readConfig();
+      expect(cfg === null || (typeof cfg === 'object' && !!cfg.hubUrl)).toBe(true);
     });
 
-    it('exports CREDENTIALS_PATH', () => {
-      expect(CREDENTIALS_PATH).toContain('.pdh');
-      expect(CREDENTIALS_PATH).toContain('credentials.json');
+    it('exports CONFIG_PATH', () => {
+      expect(CONFIG_PATH).toContain('.pdh');
+      expect(CONFIG_PATH).toContain('config.json');
     });
   });
 });

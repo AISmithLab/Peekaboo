@@ -20,36 +20,36 @@ import { hashSync } from 'bcryptjs';
 import { getDb } from './db/db.js';
 
 
-// --- Credentials file path ---
+// --- Config file path ---
 
-export const CREDENTIALS_DIR = join(homedir(), '.pdh');
-export const CREDENTIALS_PATH = join(CREDENTIALS_DIR, 'credentials.json');
-const PID_PATH = join(CREDENTIALS_DIR, 'server.pid');
+export const CONFIG_DIR = join(homedir(), '.pdh');
+export const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
+const PID_PATH = join(CONFIG_DIR, 'server.pid');
 
-export interface Credentials {
+export interface HubConfig {
   hubUrl: string;
   hubDir: string;
 }
 
 /**
- * Write credentials to ~/.pdh/credentials.json.
+ * Write config to ~/.pdh/config.json.
  * Creates the directory if it doesn't exist.
  */
-export function writeCredentials(creds: Credentials): void {
-  mkdirSync(CREDENTIALS_DIR, { recursive: true });
-  writeFileSync(CREDENTIALS_PATH, JSON.stringify(creds, null, 2) + '\n', 'utf-8');
+export function writeConfig(config: HubConfig): void {
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 }
 
 /**
- * Read credentials from ~/.pdh/credentials.json.
+ * Read config from ~/.pdh/config.json.
  * Returns null if the file doesn't exist or is malformed.
  */
-export function readCredentials(): Credentials | null {
+export function readConfig(): HubConfig | null {
   try {
-    if (!existsSync(CREDENTIALS_PATH)) return null;
-    const raw = readFileSync(CREDENTIALS_PATH, 'utf-8');
+    if (!existsSync(CONFIG_PATH)) return null;
+    const raw = readFileSync(CONFIG_PATH, 'utf-8');
     const parsed = JSON.parse(raw);
-    if (parsed.hubUrl) return parsed as Credentials;
+    if (parsed.hubUrl) return parsed as HubConfig;
     return null;
   } catch {
     return null;
@@ -81,7 +81,7 @@ export interface InitResult {
   dbPath: string;
   configPath: string;
   envPath: string;
-  credentialsPath: string;
+  globalConfigPath: string;
   credentialsFetched: boolean;
 }
 
@@ -95,7 +95,7 @@ export interface InitOptions {
  *
  * Generates a master secret, writes .env and hub-config.yaml,
  * initializes the database, creates the first API key,
- * and writes credentials to ~/.pdh/credentials.json.
+ * and writes config to ~/.pdh/config.json.
  */
 export async function init(targetDir?: string, options?: InitOptions): Promise<InitResult> {
   const dir = targetDir ?? process.cwd();
@@ -179,11 +179,11 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
 
   db.close();
 
-  // Write credentials file for auto-discovery by agents
+  // Write config file for auto-discovery by agents
   const hubUrl = `http://localhost:${port}`;
-  writeCredentials({ hubUrl, hubDir: dir });
+  writeConfig({ hubUrl, hubDir: dir });
 
-  return { secret, password, dbPath, configPath, envPath, credentialsPath: CREDENTIALS_PATH, credentialsFetched };
+  return { secret, password, dbPath, configPath, envPath, globalConfigPath: CONFIG_PATH, credentialsFetched };
 }
 
 // --- Start / Stop / Status ---
@@ -193,7 +193,7 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
  * Spawns a detached node process and writes the PID to ~/.pdh/server.pid.
  */
 export function startBackground(hubDir?: string): { pid: number; hubDir: string } {
-  const dir = hubDir ?? readCredentials()?.hubDir ?? process.cwd();
+  const dir = hubDir ?? readConfig()?.hubDir ?? process.cwd();
   const indexPath = resolve(dir, 'dist', 'index.js');
 
   if (!existsSync(indexPath)) {
@@ -222,7 +222,7 @@ export function startBackground(hubDir?: string): { pid: number; hubDir: string 
   child.unref();
 
   const pid = child.pid!;
-  mkdirSync(CREDENTIALS_DIR, { recursive: true });
+  mkdirSync(CONFIG_DIR, { recursive: true });
   writeFileSync(PID_PATH, String(pid), 'utf-8');
 
   return { pid, hubDir: dir };
@@ -263,7 +263,7 @@ export function getServerPid(): number | null {
 // --- Reset ---
 
 const HUB_FILES = ['.env', 'hub-config.yaml', 'pdh.db', 'pdh.db-wal', 'pdh.db-shm'];
-const CRED_FILES = [CREDENTIALS_PATH, PID_PATH];
+const CRED_FILES = [CONFIG_PATH, PID_PATH];
 
 /**
  * Remove all generated PersonalDataHub files so `init` can run again cleanly.
@@ -274,8 +274,8 @@ export function reset(hubDir?: string): string[] {
   // Stop the server if running
   stopBackground();
 
-  // Resolve hubDir from credentials, fall back to cwd
-  const dir = hubDir ?? readCredentials()?.hubDir ?? process.cwd();
+  // Resolve hubDir from config, fall back to cwd
+  const dir = hubDir ?? readConfig()?.hubDir ?? process.cwd();
 
   const removed: string[] = [];
 
@@ -320,7 +320,7 @@ if (isDirectRun) {
       console.log(`  .env created            ${result.envPath}`);
       console.log(`  hub-config.yaml created  ${result.configPath}`);
       console.log(`  Database created         ${result.dbPath}`);
-      console.log(`  Credentials saved        ${result.credentialsPath}`);
+      console.log(`  Config saved             ${result.globalConfigPath}`);
       console.log(`\n  Owner password: ${result.password}`);
       console.log('  (Save this — you need it to log into the GUI)\n');
       console.log('  Next steps:');
