@@ -19,7 +19,7 @@ import { homedir } from 'node:os';
 import { spawn, execSync } from 'node:child_process';
 import { hashSync } from 'bcryptjs';
 import { getDb } from './db/db.js';
-import { osUserExists, createOsUser, lockdownFiles, checkProcessOwner, PDH_USER, ensureSudo } from './os-user.js';
+import { osUserExists, createOsUser, lockdownFiles, checkProcessOwner, PDH_USER, ensureSudo, isRunningAsPdhUser } from './os-user.js';
 
 
 // --- Config file path ---
@@ -353,10 +353,16 @@ if (isDirectRun) {
       // Phase 4: Process isolation — create OS user and lock down sensitive files
       try {
         console.log('\n  Setting up process isolation...');
-        createOsUser();
-        lockdownFiles([result.envPath, result.configPath, result.dbPath]);
-        console.log(`  Created '${PDH_USER}' OS user`);
-        console.log(`  Sensitive files owned by '${PDH_USER}' with mode 0600`);
+        if (isRunningAsPdhUser()) {
+          // Already running as personaldatahub — just chmod, no sudo needed
+          lockdownFiles([result.envPath, result.configPath, result.dbPath]);
+          console.log(`  Running as '${PDH_USER}' — files locked down with mode 0600`);
+        } else {
+          createOsUser();
+          lockdownFiles([result.envPath, result.configPath, result.dbPath]);
+          console.log(`  Created '${PDH_USER}' OS user`);
+          console.log(`  Sensitive files owned by '${PDH_USER}' with mode 0600`);
+        }
       } catch (isoErr) {
         console.log(`\n  Warning: Process isolation not configured: ${(isoErr as Error).message}`);
         console.log('  The server will run as the current user. See docs/SETUP.md for manual setup.');

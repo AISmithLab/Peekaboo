@@ -7,8 +7,8 @@
  */
 
 import { execSync } from 'node:child_process';
-import { platform } from 'node:os';
-import { existsSync } from 'node:fs';
+import { platform, userInfo } from 'node:os';
+import { existsSync, chmodSync, chownSync } from 'node:fs';
 
 export const PDH_USER = 'personaldatahub';
 
@@ -112,16 +112,33 @@ export function findAvailableUidMac(): number {
 }
 
 /**
+ * Check if the current process is running as the `personaldatahub` user.
+ */
+export function isRunningAsPdhUser(): boolean {
+  try {
+    return userInfo().username === PDH_USER;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Change ownership of files to the `personaldatahub` user and set mode 0600.
- * Requires sudo.
+ * If already running as `personaldatahub`, uses direct chmod (no sudo needed).
+ * Otherwise requires sudo.
  */
 export function lockdownFiles(paths: string[]): void {
-  const group = platform() === 'darwin' ? 'staff' : PDH_USER;
+  const alreadyPdh = isRunningAsPdhUser();
 
   for (const p of paths) {
     if (!existsSync(p)) continue;
-    execSync(`sudo chown ${PDH_USER}:${group} "${p}"`, { stdio: 'inherit' });
-    execSync(`sudo chmod 600 "${p}"`, { stdio: 'inherit' });
+    if (alreadyPdh) {
+      chmodSync(p, 0o600);
+    } else {
+      const group = platform() === 'darwin' ? 'staff' : PDH_USER;
+      execSync(`sudo chown ${PDH_USER}:${group} "${p}"`, { stdio: 'inherit' });
+      execSync(`sudo chmod 600 "${p}"`, { stdio: 'inherit' });
+    }
   }
 }
 
