@@ -1,0 +1,11 @@
+title: PersonalDataHub
+description: Privacy-preserving access control between your personal data and AI agents
+url: ""
+baseurl: ""
+
+markdown: kramdown
+highlighter: rouge
+
+exclude:
+  - Gemfile
+  - Gemfile.lock

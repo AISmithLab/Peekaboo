@@ -160,7 +160,7 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
   } else {
     configContent = [
       '# PersonalDataHub configuration — add OAuth credentials here',
-      '# See docs/oauth-setup.md for setup instructions',
+      '# See systemdesigns/oauth-setup.md for setup instructions',
       '',
       'sources: {}',
       '',
@@ -474,7 +474,7 @@ if (isDirectRun) {
         }
       } catch (isoErr) {
         console.log(`\n  Warning: Process isolation not configured: ${(isoErr as Error).message}`);
-        console.log('  The server will run as the current user. See docs/SETUP.md for manual setup.');
+        console.log('  The server will run as the current user. See systemdesigns/SETUP.md for manual setup.');
       }
 
       console.log(`\n  Owner password: ${result.password}`);
@@ -483,7 +483,7 @@ if (isDirectRun) {
       if (result.credentialsFetched) {
         console.log('    Default OAuth credentials configured. Just click Connect in the GUI.');
       } else {
-        console.log('    Add OAuth credentials to hub-config.yaml — see docs/oauth-setup.md');
+        console.log('    Add OAuth credentials to hub-config.yaml — see systemdesigns/oauth-setup.md');
       }
       console.log('    Start the server:  npx pdh start');
       console.log('    Open the GUI:      http://localhost:3000\n');

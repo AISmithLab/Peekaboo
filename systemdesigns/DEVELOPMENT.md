@@ -53,7 +53,7 @@ PersonalDataHub/
 │       ├── gmail-metadata-only.test.ts
 │       ├── gmail-full-access-redacted.test.ts
 │       └── gmail-staged-action.test.ts
-├── docs/                        # Documentation
+├── systemdesigns/                        # Documentation
 ├── hub-config.example.yaml
 ├── package.json
 ├── tsconfig.json

@@ -28,7 +28,7 @@ https://github.com/user-attachments/assets/62e7a26a-44a6-4a78-8b99-59e66b1e8464
 
 PersonalDataHub runs as a **dedicated OS user** (`personaldatahub`) so that agents cannot read your OAuth tokens or database directly. The setup creates this user, installs the server under it, then configures your main user's agent to connect via MCP.
 
-The example below is for **macOS**. For **Linux (Ubuntu)**, see the [full Setup Guide](docs/SETUP.md) which covers both platforms.
+The example below is for **macOS**. For **Linux (Ubuntu)**, see the [full Setup Guide](systemdesigns/SETUP.md) which covers both platforms.
 
 ```bash
 # 1. Create the personaldatahub OS user (one-time, macOS)
@@ -54,7 +54,7 @@ echo '{"hubUrl":"http://localhost:3000","hubDir":"/Users/personaldatahub/Persona
 
 Open `http://localhost:3000` in the `personaldatahub` user's browser session to connect Gmail/GitHub via OAuth and configure filters.
 
-See the [Setup Guide](docs/SETUP.md) for full details including Linux instructions.
+See the [Setup Guide](systemdesigns/SETUP.md) for full details including Linux instructions.
 
 
 
@@ -256,15 +256,15 @@ PersonalDataHub is designed to run on **your local machine** as a dedicated OS u
 - A host-level compromise (attacker reads `hub-config.yaml` and `.env`) gives access to the owner's OAuth tokens and encryption keys — host-level security (disk encryption, OS access controls) is the owner's responsibility
 - No built-in rate limiting yet (future enhancement)
 
-For the full threat model with attack/mitigation tables for Gmail and GitHub, see [SECURITY.md](docs/SECURITY.md).
+For the full threat model with attack/mitigation tables for Gmail and GitHub, see [SECURITY.md](systemdesigns/SECURITY.md).
 
 ## Documentation
 
-- [Setup Guide](docs/SETUP.md) — install, connect sources, and connect your agent
-- [OAuth Setup](docs/OAUTH-SETUP.md) — using your own OAuth credentials instead of the defaults
-- [Development Guide](docs/DEVELOPMENT.md) — codebase structure, adding connectors, testing
-- [Security & Threat Model](docs/SECURITY.md) — detailed attack surface analysis for Gmail and GitHub
-- [Design Doc v2](docs/architecture-design/design-v2.md) — full architecture and design rationale
+- [Setup Guide](systemdesigns/SETUP.md) — install, connect sources, and connect your agent
+- [OAuth Setup](systemdesigns/OAUTH-SETUP.md) — using your own OAuth credentials instead of the defaults
+- [Development Guide](systemdesigns/DEVELOPMENT.md) — codebase structure, adding connectors, testing
+- [Security & Threat Model](systemdesigns/SECURITY.md) — detailed attack surface analysis for Gmail and GitHub
+- [Design Doc v2](systemdesigns/architecture-design/design-v2.md) — full architecture and design rationale
 
 ## License
 

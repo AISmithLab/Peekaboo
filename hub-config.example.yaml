@@ -1,6 +1,6 @@
 # PersonalDataHub configuration
 # OAuth credentials are fetched automatically during 'npx pdh init'.
-# To use your own credentials instead, see docs/OAUTH-SETUP.md.
+# To use your own credentials instead, see systemdesigns/OAUTH-SETUP.md.
 sources:
   gmail:
     enabled: true

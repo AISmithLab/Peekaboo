@@ -1,0 +1,353 @@
+---
+layout: default
+title: PersonalDataHub — Privacy-Preserving Access Control for AI Agents
+---
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <span class="hero-badge">Open Source &middot; Self-Hosted &middot; Apache 2.0</span>
+    <h1>Your data. Your rules.<br><span class="highlight">AI agents play by them.</span></h1>
+    <p>PersonalDataHub is an open-source gateway between your personal data services and AI agents. Connect Gmail, GitHub, and more &mdash; with fine-grained access control, action approval, and full audit trails. Runs locally, zero data sent to third parties.</p>
+    <div class="hero-buttons">
+      <a href="#quickstart" class="btn btn-primary">Get Started</a>
+      <a href="https://github.com/AISmithLab/PersonalDataHub" class="btn btn-secondary" target="_blank" rel="noopener">
+        <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Core Principles -->
+<section>
+  <div class="container">
+    <div class="principles">
+      <div class="principle">
+        <div class="principle-icon">&#x1f6ab;</div>
+        <h3>Zero Access by Default</h3>
+        <p>Agents see nothing until you explicitly whitelist data sources and configure filters.</p>
+      </div>
+      <div class="principle">
+        <div class="principle-icon">&#x26a1;</div>
+        <h3>On-the-Fly Fetching</h3>
+        <p>Data is fetched live from APIs on demand. Nothing cached to disk beyond OAuth tokens.</p>
+      </div>
+      <div class="principle">
+        <div class="principle-icon">&#x2705;</div>
+        <h3>Outbound Control</h3>
+        <p>Every agent action (send email, draft reply) is staged for your review before execution.</p>
+      </div>
+      <div class="principle">
+        <div class="principle-icon">&#x1f4dd;</div>
+        <h3>Full Audit Trail</h3>
+        <p>Every data access and action is logged with a timestamp, source, and purpose string.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section id="how-it-works">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">How It Works</span>
+      <h2>Four simple steps</h2>
+      <p>Set up once, control everything from the web dashboard.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h3>Connect accounts</h3>
+        <p>Link Gmail, GitHub, and other services via OAuth2. Tokens are stored locally and encrypted with AES-256-GCM.</p>
+      </div>
+      <div class="step">
+        <h3>Configure filters</h3>
+        <p>Set date ranges, sender rules, subject filters, and hidden fields. Toggle them on and off from the dashboard.</p>
+      </div>
+      <div class="step">
+        <h3>Agents discover tools</h3>
+        <p>Agents connect via MCP, OpenClaw, or REST API. They only see tools for sources you've connected.</p>
+      </div>
+      <div class="step">
+        <h3>Review &amp; approve</h3>
+        <p>Every outbound action enters a staging queue. You review, edit if needed, then approve or reject.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">Features</span>
+      <h2>Everything you need to safely delegate</h2>
+      <p>Fine-grained control without giving up convenience.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon blue">&#x1f4e7;</div>
+        <h3>Gmail Integration</h3>
+        <p>Read emails filtered by date, sender, subject, and labels. Draft, reply, and send &mdash; all staged for your approval.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon purple">&#x1f4bb;</div>
+        <h3>GitHub Integration</h3>
+        <p>Search issues and PRs across selected repos. Agents use their own scoped credentials with additional boundary controls.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon green">&#x1f50d;</div>
+        <h3>Quick Filters</h3>
+        <p>Toggle-based filters in the GUI: time ranges, sender allow/block lists, subject matching, attachment filtering, field hiding.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">&#x23f3;</div>
+        <h3>Action Staging</h3>
+        <p>Agents propose actions that enter a review queue. Edit drafts before approving. Nothing executes without your sign-off.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon blue">&#x1f310;</div>
+        <h3>Web Dashboard</h3>
+        <p>Password-protected admin UI to connect sources, toggle filters, review staged actions, and browse the audit log.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon green">&#x1f517;</div>
+        <h3>Multi-Agent Support</h3>
+        <p>Works with Claude Code, Cursor, Windsurf, OpenClaw, and any tool that speaks MCP or HTTP.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture -->
+<section id="architecture">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">Architecture</span>
+      <h2>Three layers of access control</h2>
+      <p>Defense in depth &mdash; each layer independently restricts what agents can access.</p>
+    </div>
+    <div class="arch-img">
+      <img src="{{ '/assets/img/architecture.png' | relative_url }}" alt="PersonalDataHub architecture diagram" loading="lazy">
+    </div>
+    <div class="layers">
+      <div class="layer">
+        <div class="layer-num">1</div>
+        <h3>Credential Scope</h3>
+        <p>The agent holds a scoped identity that can't access resources outside the configured boundary.</p>
+      </div>
+      <div class="layer">
+        <div class="layer-num">2</div>
+        <h3>Query Boundary</h3>
+        <p>Connectors refuse to fetch data outside configured limits &mdash; date ranges, repo lists, label filters.</p>
+      </div>
+      <div class="layer">
+        <div class="layer-num">3</div>
+        <h3>Quick Filters</h3>
+        <p>Further restrict which rows are visible and which fields are delivered to the agent at read time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tools -->
+<section>
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">Tools</span>
+      <h2>Source-specific agent tools</h2>
+      <p>Tools are dynamically registered based on which sources you've connected.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Tool</th><th>Source</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>read_emails</code></td>
+            <td><span class="badge badge-gmail">Gmail</span></td>
+            <td>Pull emails, filtered by owner's policy</td>
+          </tr>
+          <tr>
+            <td><code>draft_email</code></td>
+            <td><span class="badge badge-gmail">Gmail</span></td>
+            <td>Create a draft (staged for approval)</td>
+          </tr>
+          <tr>
+            <td><code>send_email</code></td>
+            <td><span class="badge badge-gmail">Gmail</span></td>
+            <td>Send an email (staged for approval)</td>
+          </tr>
+          <tr>
+            <td><code>reply_to_email</code></td>
+            <td><span class="badge badge-gmail">Gmail</span></td>
+            <td>Reply to an email (staged for approval)</td>
+          </tr>
+          <tr>
+            <td><code>search_github_issues</code></td>
+            <td><span class="badge badge-github">GitHub</span></td>
+            <td>Search issues across selected repos</td>
+          </tr>
+          <tr>
+            <td><code>search_github_prs</code></td>
+            <td><span class="badge badge-github">GitHub</span></td>
+            <td>Search pull requests across selected repos</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Security -->
+<section id="security">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">Security</span>
+      <h2>Built with security at every layer</h2>
+      <p>Process isolation, encrypted storage, and no destructive endpoints.</p>
+    </div>
+    <div class="security-grid">
+      <div class="security-card protected">
+        <h3>&#x1f512; What agents cannot do</h3>
+        <ul>
+          <li>Access data outside the configured boundary (date range, repos, labels)</li>
+          <li>See fields hidden by quick filters (e.g., email body can be stripped)</li>
+          <li>See rows excluded by active filters</li>
+          <li>Send emails or execute actions without owner approval</li>
+          <li>Delete anything &mdash; no destructive endpoints exist</li>
+        </ul>
+      </div>
+      <div class="security-card">
+        <h3>&#x1f6e1; How it's enforced</h3>
+        <ul>
+          <li>Runs as a dedicated OS user (<code>personaldatahub</code>) with file permissions <code>0600</code></li>
+          <li>OAuth tokens encrypted with AES-256-GCM</li>
+          <li>GUI protected with bcrypt-hashed passwords</li>
+          <li>Server binds to <code>127.0.0.1</code> only &mdash; no network exposure</li>
+          <li>Immutable audit log records every data movement</li>
+        </ul>
+      </div>
+      <div class="security-card limitations">
+        <h3>&#x26a0; Known limitations</h3>
+        <ul>
+          <li>Once data passes filters to agent, PersonalDataHub can't control what the agent does with it</li>
+          <li>Host-level compromise yields access to OAuth tokens and encryption keys</li>
+          <li>No built-in rate limiting yet (future enhancement)</li>
+        </ul>
+      </div>
+      <div class="security-card">
+        <h3>&#x1f4d6; Learn more</h3>
+        <ul>
+          <li><a href="https://github.com/AISmithLab/PersonalDataHub/blob/main/systemdesigns/SECURITY.md">Full threat model &amp; attack surface analysis</a></li>
+          <li><a href="https://github.com/AISmithLab/PersonalDataHub/blob/main/systemdesigns/architecture-design/design-v2.md">Design document v2</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Start -->
+<section id="quickstart">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">Get Started</span>
+      <h2>Up and running in minutes</h2>
+      <p>macOS example below. See the <a href="https://github.com/AISmithLab/PersonalDataHub/blob/main/systemdesigns/SETUP.md">full Setup Guide</a> for Linux instructions.</p>
+    </div>
+    <div class="quickstart-content">
+      <div class="code-block">
+        <div class="code-header">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          &nbsp; Terminal
+        </div>
+        <pre><span class="comment"># 1. Create the personaldatahub OS user (one-time, macOS)</span>
+<span class="cmd">sudo sysadminctl -addUser personaldatahub -shell /bin/zsh -password -</span>
+<span class="cmd">sudo mkdir -p /Users/personaldatahub && sudo chown personaldatahub:staff /Users/personaldatahub</span>
+
+<span class="comment"># 2. Install and start (as personaldatahub)</span>
+<span class="cmd">sudo -u personaldatahub -i</span>
+<span class="cmd">cd ~ && git clone https://github.com/AISmithLab/PersonalDataHub.git</span>
+<span class="cmd">cd PersonalDataHub && pnpm install && pnpm build</span>
+<span class="cmd">npx pdh init    # save the owner password it prints</span>
+<span class="cmd">npx pdh start</span>
+<span class="cmd">exit</span>
+
+<span class="comment"># 3. Configure your main user</span>
+<span class="cmd">mkdir -p ~/.pdh</span>
+<span class="cmd">echo '{"hubUrl":"http://localhost:3000","hubDir":"/Users/personaldatahub/PersonalDataHub"}' > ~/.pdh/config.json</span></pre>
+      </div>
+
+      <div class="connect-cards">
+        <div class="connect-card">
+          <h3>Claude Code</h3>
+          <p>Add as an MCP server in your settings:</p>
+          <code>"command": "npx", "args": ["pdh", "mcp"]</code>
+        </div>
+        <div class="connect-card">
+          <h3>Cursor / Windsurf</h3>
+          <p>Add as an MCP server in the IDE's agent settings.</p>
+          <code>"command": "npx", "args": ["pdh", "mcp"]</code>
+        </div>
+        <div class="connect-card">
+          <h3>OpenClaw</h3>
+          <p>Install the skill from ClawHub:</p>
+          <code>clawhub install personaldatahub</code>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tech Stack -->
+<section>
+  <div class="container">
+    <div class="section-header">
+      <span class="section-label">Tech Stack</span>
+      <h2>Built on proven technologies</h2>
+    </div>
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="tech-label">Language</div>
+        <div class="tech-value">TypeScript</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Runtime</div>
+        <div class="tech-value">Node.js 22+</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">HTTP Server</div>
+        <div class="tech-value">Hono</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Database</div>
+        <div class="tech-value">SQLite</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Encryption</div>
+        <div class="tech-value">AES-256-GCM</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Agent Protocol</div>
+        <div class="tech-value">MCP</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Auth</div>
+        <div class="tech-value">OAuth2 PKCE</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Config</div>
+        <div class="tech-value">YAML + Zod</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Package Manager</div>
+        <div class="tech-value">pnpm</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-label">Testing</div>
+        <div class="tech-value">Vitest</div>
+      </div>
+    </div>
+  </div>
+</section>
