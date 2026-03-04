@@ -82,6 +82,18 @@ You can connect multiple AI agents — each one that needs access to your person
 clawhub install personaldatahub
 ```
 
+## Skills
+
+Skills are high-level workflows that orchestrate PersonalDataHub's REST API to handle multi-step tasks. They complement MCP tools: MCP provides low-level primitives (read emails, draft email), while skills encode the reasoning and sequencing for specific use cases.
+
+| Skill | Description |
+|-------|-------------|
+| [`email-assistant`](skills/email-assistant/SKILL.md) | Parse a natural language email request, search for relevant emails, analyze context, and draft a response — all through PersonalDataHub's access control |
+
+**Installation (Claude Code):** Copy the skill folder to `~/.claude/skills/`, then invoke with `/email-assistant`.
+
+For the architectural rationale on Skills vs MCP, see [Skills vs MCP](systemdesigns/architecture-design/skills-vs-mcp.md).
+
 ## Features
 
 ### Data Sources
@@ -226,6 +238,8 @@ src/
 ├── audit/          Immutable audit trail
 ├── cli.ts          CLI commands (init, start, stop, status, mcp, reset)
 └── index.ts        Server entrypoint
+skills/
+└── email-assistant/  Claude Code skill for email workflows
 ```
 
 ## CLI Commands
@@ -266,6 +280,7 @@ For the full threat model with attack/mitigation tables for Gmail and GitHub, se
 - [Development Guide](systemdesigns/DEVELOPMENT.md) — codebase structure, adding connectors, testing
 - [Security & Threat Model](systemdesigns/SECURITY.md) — detailed attack surface analysis for Gmail and GitHub
 - [Design Doc v2](systemdesigns/architecture-design/design-v2.md) — full architecture and design rationale
+- [Skills vs MCP](systemdesigns/architecture-design/skills-vs-mcp.md) — when to use skills vs MCP tools
 
 ## License
 
