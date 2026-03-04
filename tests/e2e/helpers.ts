@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { hashSync } from 'bcryptjs';
 import { getDb } from '../../src/db/db.js';
+import { SqliteDataStore } from '../../src/db/sqlite-store.js';
 import { createServer } from '../../src/server/server.js';
 import { TokenManager } from '../../src/auth/token-manager.js';
 import { AuditLog } from '../../src/audit/log.js';
@@ -96,6 +96,7 @@ export function makeMockGmailConnector(rows: DataRow[]): SourceConnector {
 
 export function makeConfig(): HubConfigParsed {
   return {
+    deployment: { gateway: 'local', database: 'sqlite' },
     sources: {
       gmail: {
         enabled: true,
@@ -107,7 +108,7 @@ export function makeConfig(): HubConfigParsed {
   };
 }
 
-export function setupE2eApp(gmailRows?: DataRow[], configOverride?: HubConfigParsed): {
+export async function setupE2eApp(gmailRows?: DataRow[], configOverride?: HubConfigParsed): Promise<{
   app: Hono;
   db: Database.Database;
   tmpDir: string;
@@ -116,31 +117,32 @@ export function setupE2eApp(gmailRows?: DataRow[], configOverride?: HubConfigPar
   config: HubConfigParsed;
   connectorRegistry: ConnectorRegistry;
   sessionCookie: string;
-} {
+}> {
   const tmpDir = makeTmpDir();
   const db = getDb(join(tmpDir, 'test.db'));
+  const store = new SqliteDataStore(db);
 
-  // Set up owner auth and a session for GUI admin endpoints
-  db.prepare('INSERT INTO owner_auth (id, password_hash) VALUES (1, ?)').run(hashSync('e2e-test-pass', 10));
+  // Set up user and a session for GUI admin endpoints
+  await store.createUser('e2e@test.com', '$2a$10$dummy_hash_for_e2e_test');
   const sessionToken = 'e2e-session-token';
-  db.prepare("INSERT INTO sessions (token, expires_at) VALUES (?, datetime('now', '+1 day'))").run(sessionToken);
+  await store.createSession(sessionToken, new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
 
   const connector = makeMockGmailConnector(gmailRows ?? makeGmailRows());
   const registry: ConnectorRegistry = new Map([['gmail', connector]]);
   const config = configOverride ?? makeConfig();
 
-  const tokenManager = new TokenManager(db, 'e2e-test-secret');
+  const tokenManager = new TokenManager(store, 'e2e-test-secret');
   // Store a mock token so the source counts as "connected"
-  tokenManager.storeToken('gmail', { access_token: 'mock-access', refresh_token: 'mock-refresh' });
+  await tokenManager.storeToken('gmail', { access_token: 'mock-access', refresh_token: 'mock-refresh' });
 
   const app = createServer({
-    db,
+    store,
     connectorRegistry: registry,
     config,
     tokenManager,
   });
 
-  const audit = new AuditLog(db);
+  const audit = new AuditLog(store);
 
   return { app, db, tmpDir, audit, connector, config, connectorRegistry: registry, sessionCookie: `pdh_session=${sessionToken}` };
 }

@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { compareSync } from 'bcryptjs';
-import type Database from 'better-sqlite3';
+import type { DataStore } from '../db/datastore.js';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type { TokenManager } from '../auth/token-manager.js';
@@ -13,7 +12,7 @@ import { Octokit } from 'octokit';
 import { FILTER_TYPES, applyFilters, type QuickFilter } from '../filters.js';
 
 interface GuiDeps {
-  db: Database.Database;
+  store: DataStore;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
   tokenManager: TokenManager;
@@ -21,51 +20,31 @@ interface GuiDeps {
 
 export function createGuiRoutes(deps: GuiDeps): Hono {
   const app = new Hono();
-  const auditLog = new AuditLog(deps.db);
+  const auditLog = new AuditLog(deps.store);
 
   // Serve the SPA
   app.get('/', (c) => {
     return c.html(getIndexHtml());
   });
 
-  // --- Owner auth endpoints (before middleware) ---
+  // --- Auth endpoints (before middleware) ---
 
-  // Auth status check
-  app.get('/api/auth/status', (c) => {
+  // Auth status check — also tells frontend if signup is needed
+  app.get('/api/auth/status', async (c) => {
     const cookie = parseCookie(c.req.header('Cookie') ?? '', 'pdh_session');
-    if (!cookie) return c.json({ authenticated: false });
-    const session = deps.db.prepare(
-      "SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')",
-    ).get(cookie) as { token: string } | undefined;
-    return c.json({ authenticated: !!session });
-  });
-
-  // Login
-  app.post('/api/login', async (c) => {
-    const body = await c.req.json();
-    const { password } = body;
-    if (!password) return c.json({ ok: false, error: 'Password required' }, 400);
-
-    const row = deps.db.prepare('SELECT password_hash FROM owner_auth WHERE id = 1').get() as { password_hash: string } | undefined;
-    if (!row || !compareSync(password, row.password_hash)) {
-      return c.json({ ok: false, error: 'Invalid password' }, 401);
-    }
-
-    const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    deps.db.prepare('INSERT INTO sessions (token, expires_at) VALUES (?, ?)').run(token, expiresAt);
-
-    c.header('Set-Cookie', `pdh_session=${token}; HttpOnly; Path=/; SameSite=Strict`);
-    return c.json({ ok: true });
+    const hasUsers = (await deps.store.getUserCount()) > 0;
+    if (!cookie) return c.json({ authenticated: false, hasUsers });
+    const session = await deps.store.getValidSession(cookie);
+    return c.json({ authenticated: !!session, hasUsers });
   });
 
   // Logout
-  app.post('/api/logout', (c) => {
+  app.post('/api/logout', async (c) => {
     const cookie = parseCookie(c.req.header('Cookie') ?? '', 'pdh_session');
     if (cookie) {
-      deps.db.prepare('DELETE FROM sessions WHERE token = ?').run(cookie);
+      await deps.store.deleteSession(cookie);
     }
-    c.header('Set-Cookie', 'pdh_session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0');
+    c.header('Set-Cookie', 'pdh_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
     return c.json({ ok: true });
   });
 
@@ -73,9 +52,7 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
   app.use('/api/*', async (c, next) => {
     const cookie = parseCookie(c.req.header('Cookie') ?? '', 'pdh_session');
     if (!cookie) return c.json({ ok: false, error: 'Unauthorized' }, 401);
-    const session = deps.db.prepare(
-      "SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')",
-    ).get(cookie) as { token: string } | undefined;
+    const session = await deps.store.getValidSession(cookie);
     if (!session) return c.json({ ok: false, error: 'Unauthorized' }, 401);
     await next();
   });
@@ -84,13 +61,13 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
 
   // Get all sources and their status
   app.get('/api/sources', async (c) => {
-    const sources = Object.entries(deps.config.sources).map(([name, config]) => ({
+    const sources = await Promise.all(Object.entries(deps.config.sources).map(async ([name, config]) => ({
       name,
       enabled: config.enabled,
       boundary: config.boundary,
-      connected: deps.tokenManager.hasToken(name),
-      accountInfo: deps.tokenManager.getAccountInfo(name),
-    }));
+      connected: await deps.tokenManager.hasToken(name),
+      accountInfo: await deps.tokenManager.getAccountInfo(name),
+    })));
 
     // Backfill Gmail account info if empty
     const gmailSource = sources.find((s) => s.name === 'gmail' && s.connected);
@@ -101,7 +78,7 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
           const gmailApi = google.gmail({ version: 'v1', auth: connector.getAuth() });
           const profile = await gmailApi.users.getProfile({ userId: 'me' });
           const info = { email: profile.data.emailAddress ?? undefined };
-          deps.tokenManager.updateAccountInfo('gmail', info);
+          await deps.tokenManager.updateAccountInfo('gmail', info);
           gmailSource.accountInfo = info;
         } catch (_) { /* non-fatal */ }
       }
@@ -111,14 +88,11 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
   });
 
   // Get filters for a source
-  app.get('/api/filters', (c) => {
+  app.get('/api/filters', async (c) => {
     const source = c.req.query('source');
-    const query = source
-      ? 'SELECT * FROM filters WHERE source = ? ORDER BY created_at DESC'
-      : 'SELECT * FROM filters ORDER BY created_at DESC';
     const filters = source
-      ? deps.db.prepare(query).all(source)
-      : deps.db.prepare(query).all();
+      ? await deps.store.getFiltersBySource(source)
+      : await deps.store.getAllFilters();
     return c.json({ ok: true, filters, filterTypes: FILTER_TYPES });
   });
 
@@ -133,32 +107,26 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
 
     if (id) {
       // Update existing filter
-      deps.db.prepare(
-        'UPDATE filters SET value = ?, enabled = ? WHERE id = ?',
-      ).run(value ?? '', enabled ?? 1, id);
+      await deps.store.updateFilter(id, value ?? '', enabled ?? 1);
       return c.json({ ok: true, id });
     }
 
     // Create new filter
     const newId = `filter_${randomUUID().slice(0, 12)}`;
-    deps.db.prepare(
-      'INSERT INTO filters (id, source, type, value, enabled) VALUES (?, ?, ?, ?, ?)',
-    ).run(newId, source, type, value ?? '', enabled ?? 1);
+    await deps.store.createFilter({ id: newId, source, type, value: value ?? '', enabled: enabled ?? 1 });
     return c.json({ ok: true, id: newId });
   });
 
   // Delete a filter
-  app.delete('/api/filters/:id', (c) => {
+  app.delete('/api/filters/:id', async (c) => {
     const id = c.req.param('id');
-    deps.db.prepare('DELETE FROM filters WHERE id = ?').run(id);
+    await deps.store.deleteFilter(id);
     return c.json({ ok: true });
   });
 
   // Get staging queue
-  app.get('/api/staging', (c) => {
-    const actions = deps.db
-      .prepare("SELECT * FROM staging ORDER BY proposed_at DESC")
-      .all();
+  app.get('/api/staging', async (c) => {
+    const actions = await deps.store.getAllStagingActions();
     return c.json({ ok: true, actions });
   });
 
@@ -168,48 +136,46 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     const body = await c.req.json();
     const { decision } = body; // 'approve' or 'reject'
 
-    const action = deps.db.prepare('SELECT * FROM staging WHERE action_id = ?').get(actionId) as Record<string, unknown> | undefined;
-    const actionSource = (action?.source as string) || null;
+    const action = await deps.store.getStagingAction(actionId);
+    const actionSource = action?.source || null;
 
     const status = decision === 'approve' ? 'approved' : 'rejected';
-    deps.db.prepare(
-      "UPDATE staging SET status = ?, resolved_at = datetime('now') WHERE action_id = ?",
-    ).run(status, actionId);
+    await deps.store.updateStagingStatus(actionId, status);
 
     if (decision === 'approve') {
-      auditLog.logActionApproved(actionId, 'owner', actionSource ?? undefined);
+      await auditLog.logActionApproved(actionId, 'owner', actionSource ?? undefined);
 
       // Execute the action via connector
       if (action) {
-        const connector = deps.connectorRegistry.get(action.source as string);
+        const connector = deps.connectorRegistry.get(action.source);
         if (connector) {
           try {
             // Always save as Gmail draft on approve — owner sends manually from Gmail
             const result = await connector.executeAction(
               'draft_email',
-              JSON.parse(action.action_data as string),
+              JSON.parse(action.action_data),
             );
-            deps.db.prepare("UPDATE staging SET status = 'committed' WHERE action_id = ?").run(actionId);
-            auditLog.logActionCommitted(actionId, action.source as string, result.success ? 'success' : 'failure');
+            await deps.store.updateStagingStatus(actionId, 'committed');
+            await auditLog.logActionCommitted(actionId, action.source, result.success ? 'success' : 'failure');
           } catch (_err) {
-            auditLog.logActionCommitted(actionId, action.source as string, 'failure');
+            await auditLog.logActionCommitted(actionId, action.source, 'failure');
           }
         }
       }
     } else {
-      auditLog.logActionRejected(actionId, 'owner', actionSource ?? undefined);
+      await auditLog.logActionRejected(actionId, 'owner', actionSource ?? undefined);
     }
 
     return c.json({ ok: true, status });
   });
 
   // Get single staging action
-  app.get('/api/staging/:actionId', (c) => {
+  app.get('/api/staging/:actionId', async (c) => {
     const actionId = c.req.param('actionId');
-    const action = deps.db.prepare('SELECT * FROM staging WHERE action_id = ?').get(actionId) as Record<string, unknown> | undefined;
+    const action = await deps.store.getStagingAction(actionId);
     if (!action) return c.json({ ok: false, error: 'Not found' }, 404);
     try {
-      return c.json({ ok: true, action: { ...action, action_data: JSON.parse(action.action_data as string) } });
+      return c.json({ ok: true, action: { ...action, action_data: JSON.parse(action.action_data) } });
     } catch {
       return c.json({ ok: true, action });
     }
@@ -219,22 +185,22 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
   app.post('/api/staging/:actionId/edit', async (c) => {
     const actionId = c.req.param('actionId');
     const body = await c.req.json();
-    const action = deps.db.prepare('SELECT * FROM staging WHERE action_id = ?').get(actionId) as Record<string, unknown> | undefined;
+    const action = await deps.store.getStagingAction(actionId);
     if (!action) return c.json({ ok: false, error: 'Not found' }, 404);
     if (action.status !== 'pending') return c.json({ ok: false, error: 'Action is not pending' }, 400);
-    const existing = JSON.parse(action.action_data as string);
+    const existing = JSON.parse(action.action_data);
     const merged = { ...existing, ...body.action_data };
-    deps.db.prepare('UPDATE staging SET action_data = ? WHERE action_id = ?').run(JSON.stringify(merged), actionId);
+    await deps.store.updateStagingActionData(actionId, JSON.stringify(merged));
     return c.json({ ok: true, action_data: merged });
   });
 
   // Get audit log
-  app.get('/api/audit', (c) => {
+  app.get('/api/audit', async (c) => {
     const limit = parseInt(c.req.query('limit') ?? '50', 10);
     const event = c.req.query('event');
     const source = c.req.query('source');
 
-    const entries = auditLog.getEntries({ event: event ?? undefined, source: source ?? undefined, limit });
+    const entries = await auditLog.getEntries({ event: event ?? undefined, source: source ?? undefined, limit });
     return c.json({ ok: true, entries });
   });
 
@@ -242,7 +208,7 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
 
   // Fetch all repos from GitHub API, upsert into DB, return with selection state
   app.get('/api/github/repos', async (c) => {
-    const storedToken = deps.tokenManager.getToken('github');
+    const storedToken = await deps.tokenManager.getToken('github');
     if (!storedToken) {
       return c.json({ ok: false, error: 'GitHub not connected' }, 401);
     }
@@ -272,44 +238,17 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       });
 
       // Upsert each repo into github_repos, preserving existing enabled/permissions
-      const upsert = deps.db.prepare(`
-        INSERT INTO github_repos (full_name, owner, name, private, description, is_org, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(full_name) DO UPDATE SET
-          private = excluded.private,
-          description = excluded.description,
-          is_org = excluded.is_org,
-          fetched_at = excluded.fetched_at
-      `);
-
-      const upsertMany = deps.db.transaction(() => {
-        for (const repo of repos) {
-          upsert.run(
-            repo.full_name,
-            repo.owner.login,
-            repo.name,
-            repo.private ? 1 : 0,
-            repo.description ?? '',
-            repo.owner.type === 'Organization' ? 1 : 0,
-          );
-        }
-      });
-      upsertMany();
+      await deps.store.upsertGitHubRepos(repos.map(repo => ({
+        full_name: repo.full_name,
+        owner: repo.owner.login,
+        name: repo.name,
+        isPrivate: repo.private,
+        description: repo.description ?? '',
+        isOrg: repo.owner.type === 'Organization',
+      })));
 
       // Return all repos from DB with their selection state
-      const allRepos = deps.db.prepare(
-        'SELECT * FROM github_repos ORDER BY owner, name',
-      ).all() as Array<{
-        full_name: string;
-        owner: string;
-        name: string;
-        private: number;
-        description: string;
-        is_org: number;
-        enabled: number;
-        permissions: string;
-        fetched_at: string;
-      }>;
+      const allRepos = await deps.store.getAllGitHubRepos();
 
       return c.json({ ok: true, repos: allRepos });
     } catch (err) {
@@ -328,25 +267,15 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       return c.json({ ok: false, error: 'Invalid body' }, 400);
     }
 
-    const update = deps.db.prepare(
-      'UPDATE github_repos SET enabled = ?, permissions = ? WHERE full_name = ?',
-    );
-
-    const updateMany = deps.db.transaction(() => {
-      for (const [fullName, settings] of Object.entries(body.repos)) {
-        update.run(
-          settings.enabled ? 1 : 0,
-          JSON.stringify(settings.permissions),
-          fullName,
-        );
-      }
-    });
-    updateMany();
+    const updates = Object.entries(body.repos).map(([fullName, settings]) => ({
+      full_name: fullName,
+      enabled: settings.enabled,
+      permissions: JSON.stringify(settings.permissions),
+    }));
+    await deps.store.updateGitHubRepoSettings(updates);
 
     // Rebuild allowed repos and update connector
-    const enabledRepos = deps.db.prepare(
-      "SELECT full_name FROM github_repos WHERE enabled = 1",
-    ).all() as Array<{ full_name: string }>;
+    const enabledRepos = await deps.store.getEnabledGitHubRepos();
     const enabledNames = enabledRepos.map((r) => r.full_name);
 
     const connector = deps.connectorRegistry.get('github');
@@ -413,9 +342,7 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       const rows = await connector.fetch(boundary, { limit });
 
       // Load enabled filters and apply
-      const filters = deps.db
-        .prepare('SELECT * FROM filters WHERE source = ? AND enabled = 1')
-        .all('gmail') as QuickFilter[];
+      const filters = await deps.store.getEnabledFiltersBySource('gmail') as QuickFilter[];
       const filtered = applyFilters(rows, filters);
 
       // Map DataRow format to the shape the frontend expects
@@ -721,16 +648,14 @@ function getIndexHtml(): string {
       <div style="text-align:center;margin-bottom:24px">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <h1 style="font-size:20px;font-weight:700;margin-top:12px">PersonalDataHub</h1>
-        <p style="font-size:14px;color:var(--muted);margin-top:4px">Enter your owner password to continue</p>
+        <p id="login-subtitle" style="font-size:14px;color:var(--muted);margin-top:4px">Sign in to continue</p>
       </div>
-      <form onsubmit="handleLogin(event)">
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="login-password" placeholder="Owner password" autofocus>
-        </div>
-        <div id="login-error" style="color:var(--destructive);font-size:13px;margin-bottom:12px"></div>
-        <button type="submit" class="btn btn-primary" style="width:100%">Sign in</button>
+      <form id="login-form" style="display:flex;flex-direction:column;gap:12px" onsubmit="return handleAuthSubmit(event)">
+        <input id="auth-email" type="email" placeholder="Email" required style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--fg)">
+        <input id="auth-password" type="password" placeholder="Password" required minlength="8" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--fg)">
+        <button id="auth-submit" type="submit" class="btn btn-primary" style="width:100%;padding:10px;font-size:14px">Sign In</button>
       </form>
+      <div id="login-error" style="color:var(--destructive);font-size:13px;margin-top:12px;text-align:center"></div>
     </div>
   </div>
 
@@ -1709,29 +1634,46 @@ function getIndexHtml(): string {
       }
     })();
 
-    // Login form handler
-    async function handleLogin(e) {
+    // --- Auth: signup vs login form ---
+    var isSignup = false;
+
+    function handleAuthSubmit(e) {
       e.preventDefault();
-      var pw = document.getElementById('login-password').value;
-      var err = document.getElementById('login-error');
-      err.textContent = '';
-      var res = await fetch('/api/login', {
+      var email = document.getElementById('auth-email').value;
+      var password = document.getElementById('auth-password').value;
+      var errorEl = document.getElementById('login-error');
+      var btn = document.getElementById('auth-submit');
+      errorEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = isSignup ? 'Creating account...' : 'Signing in...';
+
+      var endpoint = isSignup ? '/auth/signup' : '/auth/login';
+      fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw })
+        body: JSON.stringify({ email: email, password: password }),
+      }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        btn.disabled = false;
+        btn.textContent = isSignup ? 'Create Account' : 'Sign In';
+        if (res.data.ok) {
+          document.getElementById('login-screen').style.display = 'none';
+          document.getElementById('app').style.display = 'flex';
+          fetchData();
+        } else {
+          errorEl.textContent = res.data.error || 'Authentication failed';
+        }
+      }).catch(function() {
+        btn.disabled = false;
+        btn.textContent = isSignup ? 'Create Account' : 'Sign In';
+        errorEl.textContent = 'Network error. Please try again.';
       });
-      if (res.ok) {
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('app').style.display = 'flex';
-        fetchData();
-      } else {
-        err.textContent = 'Invalid password';
-      }
+      return false;
     }
-    window.handleLogin = handleLogin;
+    window.handleAuthSubmit = handleAuthSubmit;
 
     // Check auth on load
-    fetch('/api/auth/status').then(r => r.json()).then(function(data) {
+    fetch('/api/auth/status').then(function(r) { return r.json(); }).then(function(data) {
       if (data.authenticated) {
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('app').style.display = 'flex';
@@ -1739,6 +1681,9 @@ function getIndexHtml(): string {
       } else {
         document.getElementById('login-screen').style.display = 'flex';
         document.getElementById('app').style.display = 'none';
+        isSignup = !data.hasUsers;
+        document.getElementById('login-subtitle').textContent = isSignup ? 'Create your account' : 'Sign in to continue';
+        document.getElementById('auth-submit').textContent = isSignup ? 'Create Account' : 'Sign In';
       }
     });
   </script>

@@ -1,15 +1,16 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import type Database from 'better-sqlite3';
+import type { DataStore } from '../db/datastore.js';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type { TokenManager } from '../auth/token-manager.js';
 import { createAppApi } from './app-api.js';
 import { createGuiRoutes } from '../gui/routes.js';
 import { createOAuthRoutes } from '../auth/oauth-routes.js';
+import { createLoginRoutes } from '../auth/login-routes.js';
 
-interface ServerDeps {
-  db: Database.Database;
+export interface ServerDeps {
+  store: DataStore;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
   tokenManager: TokenManager;
@@ -27,16 +28,22 @@ export function createServer(deps: ServerDeps): Hono {
 
   // Mount OAuth routes
   const oauthRoutes = createOAuthRoutes({
-    db: deps.db,
+    store: deps.store,
     connectorRegistry: deps.connectorRegistry,
     config: deps.config,
     tokenManager: deps.tokenManager,
   });
   app.route('/oauth', oauthRoutes);
 
+  // Mount login routes (email + password)
+  const loginRoutes = createLoginRoutes({
+    store: deps.store,
+  });
+  app.route('/auth', loginRoutes);
+
   // Mount GUI routes (must be last — catches '/')
   const guiRoutes = createGuiRoutes({
-    db: deps.db,
+    store: deps.store,
     connectorRegistry: deps.connectorRegistry,
     config: deps.config,
     tokenManager: deps.tokenManager,

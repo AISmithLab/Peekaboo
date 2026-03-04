@@ -9,8 +9,8 @@ describe('E2E: Gmail with Quick Filters', () => {
   let db: Database.Database;
   let tmpDir: string;
 
-  beforeEach(() => {
-    ({ app, db, tmpDir } = setupE2eApp());
+  beforeEach(async () => {
+    ({ app, db, tmpDir } = await setupE2eApp());
   });
 
   afterEach(() => cleanup(db, tmpDir));

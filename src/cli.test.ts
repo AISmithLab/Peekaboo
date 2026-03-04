@@ -36,7 +36,7 @@ describe('CLI init', () => {
     const db = new Database(join(tmpDir, 'pdh.db'));
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
     const names = tables.map(t => t.name);
-    expect(names).toContain('owner_auth');
+    expect(names).toContain('users');
     expect(names).toContain('sessions');
     expect(names).toContain('manifests');
     expect(names).toContain('staging');
@@ -45,15 +45,11 @@ describe('CLI init', () => {
     db.close();
   });
 
-  it('generates a password and stores hashed version in owner_auth', async () => {
-    const result = await init(tmpDir);
-    expect(result.password).toBeTruthy();
-    expect(result.password.length).toBeGreaterThan(10);
-
+  it('creates empty users table (no pre-seeded users)', async () => {
+    await init(tmpDir);
     const db = new Database(join(tmpDir, 'pdh.db'));
-    const row = db.prepare('SELECT * FROM owner_auth WHERE id = 1').get() as { password_hash: string } | undefined;
-    expect(row).toBeTruthy();
-    expect(row!.password_hash).toBeTruthy();
+    const count = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+    expect(count.count).toBe(0);
     db.close();
   });
 
@@ -145,7 +141,7 @@ describe('CLI reset', () => {
     reset(tmpDir);
     // Second init should not throw
     const result = await init(tmpDir);
-    expect(result.password).toBeTruthy();
+    expect(result.secret).toBeTruthy();
   });
 
   it('returns empty array when nothing to remove', () => {

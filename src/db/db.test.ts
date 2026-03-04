@@ -26,7 +26,7 @@ describe('Database', () => {
       .all() as { name: string }[];
     const tableNames = tables.map((t) => t.name);
 
-    expect(tableNames).toContain('owner_auth');
+    expect(tableNames).toContain('users');
     expect(tableNames).toContain('sessions');
     expect(tableNames).toContain('manifests');
     expect(tableNames).toContain('staging');
@@ -35,10 +35,10 @@ describe('Database', () => {
     expect(tableNames).not.toContain('api_keys');
   });
 
-  it('owner_auth table has correct columns', () => {
-    const cols = db.prepare("PRAGMA table_info('owner_auth')").all() as { name: string }[];
+  it('users table has correct columns', () => {
+    const cols = db.prepare("PRAGMA table_info('users')").all() as { name: string }[];
     const colNames = cols.map((c) => c.name);
-    expect(colNames).toEqual(['id', 'password_hash', 'created_at']);
+    expect(colNames).toEqual(['id', 'email', 'password_hash', 'created_at']);
   });
 
   it('sessions table has correct columns', () => {

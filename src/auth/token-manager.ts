@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { DataStore } from '../db/datastore.js';
 import { encryptField, decryptField } from '../db/encryption.js';
 
 export interface TokenData {
@@ -10,59 +10,30 @@ export interface TokenData {
   account_info?: Record<string, unknown>;
 }
 
-interface StoredRow {
-  source: string;
-  access_token: string;
-  refresh_token: string | null;
-  token_type: string;
-  expires_at: string | null;
-  scopes: string;
-  account_info: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export class TokenManager {
   constructor(
-    private db: Database.Database,
+    private store: DataStore,
     private masterSecret: string,
   ) {}
 
-  storeToken(source: string, data: TokenData): void {
+  async storeToken(source: string, data: TokenData): Promise<void> {
     const encAccess = encryptField(data.access_token, this.masterSecret);
     const encRefresh = data.refresh_token
       ? encryptField(data.refresh_token, this.masterSecret)
       : null;
 
-    this.db
-      .prepare(
-        `INSERT INTO oauth_tokens (source, access_token, refresh_token, token_type, expires_at, scopes, account_info, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(source) DO UPDATE SET
-           access_token = excluded.access_token,
-           refresh_token = excluded.refresh_token,
-           token_type = excluded.token_type,
-           expires_at = excluded.expires_at,
-           scopes = excluded.scopes,
-           account_info = excluded.account_info,
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        source,
-        encAccess,
-        encRefresh,
-        data.token_type ?? 'Bearer',
-        data.expires_at ?? null,
-        data.scopes ?? '',
-        JSON.stringify(data.account_info ?? {}),
-      );
+    await this.store.upsertToken(source, {
+      access_token: encAccess,
+      refresh_token: encRefresh,
+      token_type: data.token_type ?? 'Bearer',
+      expires_at: data.expires_at ?? null,
+      scopes: data.scopes ?? '',
+      account_info: JSON.stringify(data.account_info ?? {}),
+    });
   }
 
-  getToken(source: string): TokenData | null {
-    const row = this.db
-      .prepare('SELECT * FROM oauth_tokens WHERE source = ?')
-      .get(source) as StoredRow | undefined;
-
+  async getToken(source: string): Promise<TokenData | null> {
+    const row = await this.store.getToken(source);
     if (!row) return null;
 
     return {
@@ -77,50 +48,33 @@ export class TokenManager {
     };
   }
 
-  hasToken(source: string): boolean {
-    const row = this.db
-      .prepare('SELECT 1 FROM oauth_tokens WHERE source = ?')
-      .get(source);
-    return !!row;
+  async hasToken(source: string): Promise<boolean> {
+    return this.store.hasToken(source);
   }
 
-  getAccountInfo(source: string): Record<string, unknown> | null {
-    const row = this.db
-      .prepare('SELECT account_info FROM oauth_tokens WHERE source = ?')
-      .get(source) as { account_info: string } | undefined;
-
-    if (!row) return null;
-    return JSON.parse(row.account_info);
+  async getAccountInfo(source: string): Promise<Record<string, unknown> | null> {
+    const info = await this.store.getAccountInfo(source);
+    if (!info) return null;
+    return JSON.parse(info);
   }
 
-  updateAccountInfo(source: string, info: Record<string, unknown>): void {
-    this.db
-      .prepare(
-        `UPDATE oauth_tokens SET account_info = ?, updated_at = datetime('now') WHERE source = ?`,
-      )
-      .run(JSON.stringify(info), source);
+  async updateAccountInfo(source: string, info: Record<string, unknown>): Promise<void> {
+    await this.store.updateAccountInfo(source, JSON.stringify(info));
   }
 
-  deleteToken(source: string): void {
-    this.db.prepare('DELETE FROM oauth_tokens WHERE source = ?').run(source);
+  async deleteToken(source: string): Promise<void> {
+    await this.store.deleteToken(source);
   }
 
-  isExpired(source: string): boolean {
-    const row = this.db
-      .prepare('SELECT expires_at FROM oauth_tokens WHERE source = ?')
-      .get(source) as { expires_at: string | null } | undefined;
-
-    if (!row || !row.expires_at) return false;
-    return new Date(row.expires_at) <= new Date();
+  async isExpired(source: string): Promise<boolean> {
+    const expiresAt = await this.store.getTokenExpiresAt(source);
+    if (!expiresAt) return false;
+    return new Date(expiresAt) <= new Date();
   }
 
-  updateAccessToken(source: string, accessToken: string, expiresAt?: string): void {
+  async updateAccessToken(source: string, accessToken: string, expiresAt?: string): Promise<void> {
     const encAccess = encryptField(accessToken, this.masterSecret);
-    this.db
-      .prepare(
-        `UPDATE oauth_tokens SET access_token = ?, expires_at = ?, updated_at = datetime('now') WHERE source = ?`,
-      )
-      .run(encAccess, expiresAt ?? null, source);
+    await this.store.updateAccessToken(source, encAccess, expiresAt ?? null);
   }
 
   /**
@@ -128,7 +82,7 @@ export class TokenManager {
    * Returns the new access token or null if refresh fails.
    */
   async refreshGmailToken(clientId: string, clientSecret: string): Promise<string | null> {
-    const token = this.getToken('gmail');
+    const token = await this.getToken('gmail');
     if (!token?.refresh_token) return null;
 
     const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -149,7 +103,7 @@ export class TokenManager {
       ? new Date(Date.now() + data.expires_in * 1000).toISOString()
       : undefined;
 
-    this.updateAccessToken('gmail', data.access_token, expiresAt);
+    await this.updateAccessToken('gmail', data.access_token, expiresAt);
     return data.access_token;
   }
 
@@ -158,7 +112,7 @@ export class TokenManager {
    * Returns the new access token or null if refresh fails.
    */
   async refreshGitHubToken(clientId: string, clientSecret: string): Promise<string | null> {
-    const token = this.getToken('github');
+    const token = await this.getToken('github');
     if (!token?.refresh_token) return null;
 
     const res = await fetch('https://github.com/login/oauth/access_token', {
@@ -191,7 +145,7 @@ export class TokenManager {
       : undefined;
 
     // GitHub may rotate the refresh token
-    this.storeToken('github', {
+    await this.storeToken('github', {
       access_token: data.access_token,
       refresh_token: data.refresh_token ?? token.refresh_token,
       token_type: 'Bearer',
@@ -210,10 +164,10 @@ export class TokenManager {
     source: string,
     credentials?: { clientId: string; clientSecret: string },
   ): Promise<string | null> {
-    const token = this.getToken(source);
+    const token = await this.getToken(source);
     if (!token) return null;
 
-    if (!this.isExpired(source)) return token.access_token;
+    if (!(await this.isExpired(source))) return token.access_token;
 
     // Token is expired — try to refresh
     if (!credentials) return null;

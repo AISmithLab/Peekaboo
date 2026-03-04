@@ -42,7 +42,15 @@ const aiProviderSchema = z.object({
   model: z.string().optional(),
 });
 
+const deploymentSchema = z.object({
+  gateway: z.enum(['local', 'serverless']).default('local'),
+  database: z.enum(['sqlite', 'dynamodb']).default('sqlite'),
+  base_url: z.string().optional(),
+  dynamodb_table: z.string().optional(),
+});
+
 export const hubConfigSchema = z.object({
+  deployment: deploymentSchema.default({ gateway: 'local', database: 'sqlite' }),
   sources: z.record(z.string(), sourceConfigSchema).default({}),
   encryption_key: z.string().optional(),
   ai: aiProviderSchema.optional(),

@@ -11,8 +11,8 @@ describe('E2E: Gmail with Time and Sender Filters', () => {
   let tmpDir: string;
   let audit: AuditLog;
 
-  beforeEach(() => {
-    ({ app, db, tmpDir, audit } = setupE2eApp());
+  beforeEach(async () => {
+    ({ app, db, tmpDir, audit } = await setupE2eApp());
   });
 
   afterEach(() => cleanup(db, tmpDir));
@@ -57,7 +57,7 @@ describe('E2E: Gmail with Time and Sender Filters', () => {
       purpose: 'Audit test',
     });
 
-    const entries = audit.getEntries({ event: 'data_pull' });
+    const entries = await audit.getEntries({ event: 'data_pull' });
     expect(entries).toHaveLength(1);
     expect(entries[0].details.purpose).toBe('Audit test');
     expect(entries[0].details.resultsReturned).toBe(3);

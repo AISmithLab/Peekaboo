@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
-import { hashSync } from 'bcryptjs';
 import { getDb } from '../db/db.js';
+import { SqliteDataStore } from '../db/sqlite-store.js';
 import { createServer } from '../server/server.js';
 import { TokenManager } from '../auth/token-manager.js';
 import type { ConnectorRegistry, SourceConnector, ActionResult } from '../connectors/types.js';
@@ -13,6 +13,7 @@ import { makeTmpDir } from '../test-utils.js';
 
 function makeConfig(): HubConfigParsed {
   return {
+    deployment: { gateway: 'local', database: 'sqlite' },
     sources: {
       gmail: {
         enabled: true,
@@ -29,28 +30,31 @@ function makeConfig(): HubConfigParsed {
   };
 }
 
-function setupOwnerAuth(db: Database.Database): string {
-  db.prepare('INSERT OR IGNORE INTO owner_auth (id, password_hash) VALUES (1, ?)').run(hashSync('testpass', 10));
+function setupAuth(store: SqliteDataStore): string {
+  store.createUser('test@example.com', '$2a$10$dummy_hash_for_test');
   const token = 'test-session-token';
-  db.prepare("INSERT INTO sessions (token, expires_at) VALUES (?, datetime('now', '+1 day'))").run(token);
+  const expires = new Date(Date.now() + 86400000).toISOString();
+  store.createSession(token, expires);
   return `pdh_session=${token}`;
 }
 
 describe('GUI Routes', () => {
   let tmpDir: string;
   let db: Database.Database;
+  let store: SqliteDataStore;
   let app: Hono;
   let cookie: string;
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
     db = getDb(join(tmpDir, 'test.db'));
+    store = new SqliteDataStore(db);
     const registry: ConnectorRegistry = new Map();
-    const tokenManager = new TokenManager(db, 'test');
+    const tokenManager = new TokenManager(store, 'test');
     app = createServer({
-      db, connectorRegistry: registry, config: makeConfig(), tokenManager,
+      store, connectorRegistry: registry, config: makeConfig(), tokenManager,
     });
-    cookie = setupOwnerAuth(db);
+    cookie = setupAuth(store);
   });
 
   afterEach(() => {
@@ -93,26 +97,11 @@ describe('GUI Routes', () => {
     expect(json.authenticated).toBe(true);
   });
 
-  it('POST /api/login with correct password sets session', async () => {
-    const res = await app.request('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: 'testpass' }),
-    });
+  it('GET /api/auth/status returns hasUsers:true when users exist', async () => {
+    const res = await app.request('/api/auth/status');
     expect(res.status).toBe(200);
-    const json = await res.json() as { ok: boolean };
-    expect(json.ok).toBe(true);
-    const setCookie = res.headers.get('Set-Cookie');
-    expect(setCookie).toContain('pdh_session=');
-  });
-
-  it('POST /api/login with wrong password returns 401', async () => {
-    const res = await app.request('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: 'wrongpassword' }),
-    });
-    expect(res.status).toBe(401);
+    const json = await res.json() as { authenticated: boolean; hasUsers: boolean };
+    expect(json.hasUsers).toBe(true);
   });
 
   it('GET /api/filters returns filters list and types', async () => {
@@ -166,9 +155,10 @@ describe('GUI Routes', () => {
 
   it('staging approve/reject workflow', async () => {
     // Insert a staging row
-    db.prepare(
-      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'pending')",
-    ).run('act_test', 'gmail', 'draft_email', '{"to":"alice@co.com"}', 'Test draft');
+    store.insertStagingAction({
+      actionId: 'act_test', manifestId: '', source: 'gmail',
+      actionType: 'draft_email', actionData: '{"to":"alice@co.com"}', purpose: 'Test draft',
+    });
 
     // Approve it
     const res = await app.request('/api/staging/act_test/resolve', {
@@ -185,9 +175,10 @@ describe('GUI Routes', () => {
   });
 
   it('GET /api/staging/:actionId returns single action with parsed action_data', async () => {
-    db.prepare(
-      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'pending')",
-    ).run('act_single', 'gmail', 'draft_email', '{"to":"bob@co.com","subject":"Hi"}', 'Test');
+    store.insertStagingAction({
+      actionId: 'act_single', manifestId: '', source: 'gmail',
+      actionType: 'draft_email', actionData: '{"to":"bob@co.com","subject":"Hi"}', purpose: 'Test',
+    });
 
     const res = await app.request('/api/staging/act_single', { headers: { Cookie: cookie } });
     expect(res.status).toBe(200);
@@ -204,9 +195,10 @@ describe('GUI Routes', () => {
   });
 
   it('POST /api/staging/:actionId/edit merges action_data', async () => {
-    db.prepare(
-      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'pending')",
-    ).run('act_edit', 'gmail', 'draft_email', '{"to":"alice@co.com","subject":"Old","body":"Hello"}', 'Test');
+    store.insertStagingAction({
+      actionId: 'act_edit', manifestId: '', source: 'gmail',
+      actionType: 'draft_email', actionData: '{"to":"alice@co.com","subject":"Old","body":"Hello"}', purpose: 'Test',
+    });
 
     const res = await app.request('/api/staging/act_edit/edit', {
       method: 'POST',
@@ -227,9 +219,11 @@ describe('GUI Routes', () => {
   });
 
   it('POST /api/staging/:actionId/edit rejects non-pending actions', async () => {
-    db.prepare(
-      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'approved')",
-    ).run('act_done', 'gmail', 'draft_email', '{"to":"x@co.com"}', 'Test');
+    store.insertStagingAction({
+      actionId: 'act_done', manifestId: '', source: 'gmail',
+      actionType: 'draft_email', actionData: '{"to":"x@co.com"}', purpose: 'Test',
+    });
+    store.updateStagingStatus('act_done', 'approved');
 
     const res = await app.request('/api/staging/act_done/edit', {
       method: 'POST',
@@ -245,6 +239,7 @@ describe('GUI Routes', () => {
 describe('Action Review — deny / save-to-draft / send', () => {
   let tmpDir: string;
   let db: Database.Database;
+  let store: SqliteDataStore;
   let app: Hono;
   let executedActions: Array<{ actionType: string; actionData: Record<string, unknown> }>;
   let cookie: string;
@@ -263,13 +258,14 @@ describe('Action Review — deny / save-to-draft / send', () => {
   beforeEach(() => {
     tmpDir = makeTmpDir();
     db = getDb(join(tmpDir, 'test.db'));
+    store = new SqliteDataStore(db);
     executedActions = [];
     const registry: ConnectorRegistry = new Map([['gmail', makeMockGmailConnector()]]);
-    const tokenManager = new TokenManager(db, 'test');
+    const tokenManager = new TokenManager(store, 'test');
     app = createServer({
-      db, connectorRegistry: registry, config: makeConfig(), tokenManager,
+      store, connectorRegistry: registry, config: makeConfig(), tokenManager,
     });
-    cookie = setupOwnerAuth(db);
+    cookie = setupAuth(store);
   });
 
   afterEach(() => {
@@ -278,9 +274,14 @@ describe('Action Review — deny / save-to-draft / send', () => {
   });
 
   function insertPendingAction(id: string, actionData: Record<string, unknown> = { to: 'alice@co.com', subject: 'Hi', body: 'Hello' }) {
-    db.prepare(
-      "INSERT INTO staging (action_id, source, action_type, action_data, purpose, status) VALUES (?, ?, ?, ?, ?, 'pending')",
-    ).run(id, 'gmail', 'draft_email', JSON.stringify(actionData), 'Test action');
+    store.insertStagingAction({
+      actionId: id,
+      manifestId: '',
+      source: 'gmail',
+      actionType: 'draft_email',
+      actionData: JSON.stringify(actionData),
+      purpose: 'Test action',
+    });
   }
 
   // --- Deny ---

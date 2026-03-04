@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import type Database from 'better-sqlite3';
-import type { ConnectorRegistry, DataRow } from '../connectors/types.js';
+import type { DataStore } from '../db/datastore.js';
+import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type { TokenManager } from '../auth/token-manager.js';
 import { AuditLog } from '../audit/log.js';
 import { applyFilters, type QuickFilter } from '../filters.js';
 
 export interface AppApiDeps {
-  db: Database.Database;
+  store: DataStore;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
   tokenManager: TokenManager;
@@ -16,7 +16,7 @@ export interface AppApiDeps {
 
 export function createAppApi(deps: AppApiDeps): Hono {
   const app = new Hono();
-  const auditLog = new AuditLog(deps.db);
+  const auditLog = new AuditLog(deps.store);
 
   // POST /pull
   app.post('/pull', async (c) => {
@@ -42,7 +42,7 @@ export function createAppApi(deps: AppApiDeps): Hono {
       return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `No connector for source: "${source}"` } }, 404);
     }
 
-    if (!deps.tokenManager.hasToken(source)) {
+    if (!await deps.tokenManager.hasToken(source)) {
       return c.json({ ok: false, error: { code: 'SOURCE_NOT_CONNECTED', message: `Source "${source}" is not connected. Complete OAuth setup in the GUI first.` } }, 400);
     }
 
@@ -50,13 +50,11 @@ export function createAppApi(deps: AppApiDeps): Hono {
     const rows = await connector.fetch(boundary);
 
     // Load enabled filters and apply
-    const filters = deps.db
-      .prepare('SELECT * FROM filters WHERE source = ? AND enabled = 1')
-      .all(source) as QuickFilter[];
+    const filters = await deps.store.getEnabledFiltersBySource(source) as QuickFilter[];
     const filtered = applyFilters(rows, filters);
 
     // Log to audit
-    auditLog.logPull(source, purpose, filtered.length, 'agent');
+    await auditLog.logPull(source, purpose, filtered.length, 'agent');
 
     return c.json({
       ok: true,
@@ -80,13 +78,17 @@ export function createAppApi(deps: AppApiDeps): Hono {
 
     // Insert into staging
     const actionId = `act_${randomUUID().slice(0, 12)}`;
-    deps.db.prepare(
-      `INSERT INTO staging (action_id, manifest_id, source, action_type, action_data, purpose, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-    ).run(actionId, '', source, action_type, JSON.stringify(action_data ?? {}), purpose);
+    await deps.store.insertStagingAction({
+      actionId,
+      manifestId: '',
+      source,
+      actionType: action_type,
+      actionData: JSON.stringify(action_data ?? {}),
+      purpose,
+    });
 
     // Log to audit
-    auditLog.logActionProposed(actionId, source, action_type, purpose, 'agent');
+    await auditLog.logActionProposed(actionId, source, action_type, purpose, 'agent');
 
     return c.json({
       ok: true,
@@ -96,10 +98,10 @@ export function createAppApi(deps: AppApiDeps): Hono {
   });
 
   // GET /sources — discover which sources are connected (have OAuth tokens)
-  app.get('/sources', (c) => {
+  app.get('/sources', async (c) => {
     const sources: Record<string, { connected: boolean }> = {};
     for (const [name] of deps.connectorRegistry) {
-      const hasToken = deps.tokenManager.hasToken(name);
+      const hasToken = await deps.tokenManager.hasToken(name);
       sources[name] = { connected: hasToken };
     }
     return c.json({ ok: true, sources });

@@ -13,8 +13,8 @@ describe('E2E: Gmail Staged Action', () => {
   let connector: SourceConnector;
   let sessionCookie: string;
 
-  beforeEach(() => {
-    ({ app, db, tmpDir, audit, connector, sessionCookie } = setupE2eApp());
+  beforeEach(async () => {
+    ({ app, db, tmpDir, audit, connector, sessionCookie } = await setupE2eApp());
   });
 
   afterEach(() => cleanup(db, tmpDir));
@@ -63,7 +63,7 @@ describe('E2E: Gmail Staged Action', () => {
     expect(staging.status).toBe('committed');
 
     // Verify audit log: proposed → approved → committed
-    const entries = audit.getEntries();
+    const entries = await audit.getEntries();
     const events = entries.map(e => e.event);
     expect(events).toContain('action_proposed');
     expect(events).toContain('action_approved');
@@ -89,7 +89,7 @@ describe('E2E: Gmail Staged Action', () => {
     const staging = db.prepare('SELECT * FROM staging WHERE action_id = ?').get(actionId) as Record<string, unknown>;
     expect(staging.status).toBe('rejected');
 
-    const entries = audit.getEntries({ event: 'action_rejected' });
+    const entries = await audit.getEntries({ event: 'action_rejected' });
     expect(entries).toHaveLength(1);
   });
 });

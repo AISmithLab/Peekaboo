@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: PersonalDataHub — serverless deployment
+
+Parameters:
+  EncryptionKey:
+    Type: String
+    Description: Encryption key for OAuth tokens at rest
+    NoEcho: true
+  BaseUrl:
+    Type: String
+    Description: Public URL of the API Gateway (e.g. https://abc123.execute-api.us-east-1.amazonaws.com)
+  GmailClientId:
+    Type: String
+    Default: ''
+  GmailClientSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+  GmailBoundaryAfter:
+    Type: String
+    Default: '2024-01-01'
+  GitHubClientId:
+    Type: String
+    Default: ''
+  GitHubClientSecret:
+    Type: String
+    Default: ''
+    NoEcho: true
+  GitHubAgentUsername:
+    Type: String
+    Default: ''
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 30
+    MemorySize: 512
+    Architectures:
+      - arm64
+
+Resources:
+  # --- DynamoDB Table (single-table design) ---
+  DataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-data'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # --- Main Lambda (API Gateway proxy) ---
+  GatewayFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda.handler
+      CodeUri: ../dist-lambda/
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref DataTable
+          PDH_ENCRYPTION_KEY: !Ref EncryptionKey
+          BASE_URL: !Ref BaseUrl
+          GMAIL_CLIENT_ID: !Ref GmailClientId
+          GMAIL_CLIENT_SECRET: !Ref GmailClientSecret
+          GMAIL_BOUNDARY_AFTER: !Ref GmailBoundaryAfter
+          GITHUB_CLIENT_ID: !Ref GitHubClientId
+          GITHUB_CLIENT_SECRET: !Ref GitHubClientSecret
+          GITHUB_AGENT_USERNAME: !Ref GitHubAgentUsername
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DataTable
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub 'https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod'
+  TableName:
+    Description: DynamoDB table name
+    Value: !Ref DataTable

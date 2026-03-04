@@ -1,8 +1,9 @@
 import type Database from 'better-sqlite3';
 
-const CREATE_OWNER_AUTH = `
-CREATE TABLE IF NOT EXISTS owner_auth (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+const CREATE_USERS = `
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 )`;
@@ -86,7 +87,7 @@ CREATE TABLE IF NOT EXISTS github_repos (
 )`;
 
 export function createTables(db: Database.Database): void {
-  db.exec(CREATE_OWNER_AUTH);
+  db.exec(CREATE_USERS);
   db.exec(CREATE_SESSIONS);
   db.exec(CREATE_MANIFESTS);
   // Migrate existing manifests tables missing new columns

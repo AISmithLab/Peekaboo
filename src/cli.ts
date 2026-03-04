@@ -19,7 +19,6 @@ import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn, execSync } from 'node:child_process';
-import { hashSync } from 'bcryptjs';
 import { getDb } from './db/db.js';
 import { osUserExists, createOsUser, lockdownFiles, checkProcessOwner, PDH_USER, ensureSudo, isRunningAsPdhUser } from './os-user.js';
 
@@ -81,7 +80,6 @@ async function fetchDefaultCredentials(): Promise<OAuthCredentials | null> {
 
 export interface InitResult {
   secret: string;
-  password: string;
   dbPath: string;
   configPath: string;
   envPath: string;
@@ -173,21 +171,13 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
 
   // Initialize database
   const db = getDb(dbPath);
-
-  // Generate owner password
-  const password = randomBytes(16).toString('base64url');
-  const passwordHash = hashSync(password, 10);
-  db.prepare(
-    'INSERT INTO owner_auth (id, password_hash) VALUES (1, ?)',
-  ).run(passwordHash);
-
   db.close();
 
   // Write config file for auto-discovery by agents
   const hubUrl = `http://localhost:${port}`;
   writeConfig({ hubUrl, hubDir: dir });
 
-  return { secret, password, dbPath, configPath, envPath, globalConfigPath: CONFIG_PATH, credentialsFetched };
+  return { secret, dbPath, configPath, envPath, globalConfigPath: CONFIG_PATH, credentialsFetched };
 }
 
 // --- Start / Stop / Status ---
@@ -458,35 +448,15 @@ if (isDirectRun) {
       console.log(`  hub-config.yaml created  ${result.configPath}`);
       console.log(`  Database created         ${result.dbPath}`);
       console.log(`  Config saved             ${result.globalConfigPath}`);
-
-      // Phase 4: Process isolation — create OS user and lock down sensitive files
-      try {
-        console.log('\n  Setting up process isolation...');
-        if (isRunningAsPdhUser()) {
-          // Already running as personaldatahub — just chmod, no sudo needed
-          lockdownFiles([result.envPath, result.configPath, result.dbPath]);
-          console.log(`  Running as '${PDH_USER}' — files locked down with mode 0600`);
-        } else {
-          createOsUser();
-          lockdownFiles([result.envPath, result.configPath, result.dbPath]);
-          console.log(`  Created '${PDH_USER}' OS user`);
-          console.log(`  Sensitive files owned by '${PDH_USER}' with mode 0600`);
-        }
-      } catch (isoErr) {
-        console.log(`\n  Warning: Process isolation not configured: ${(isoErr as Error).message}`);
-        console.log('  The server will run as the current user. See systemdesigns/SETUP.md for manual setup.');
-      }
-
-      console.log(`\n  Owner password: ${result.password}`);
-      console.log('  (Save this — you need it to log into the GUI)\n');
-      console.log('  Next steps:');
+      console.log('\n  Next steps:');
       if (result.credentialsFetched) {
         console.log('    Default OAuth credentials configured. Just click Connect in the GUI.');
       } else {
         console.log('    Add OAuth credentials to hub-config.yaml — see systemdesigns/oauth-setup.md');
       }
       console.log('    Start the server:  npx pdh start');
-      console.log('    Open the GUI:      http://localhost:3000\n');
+      console.log('    Open the GUI:      http://localhost:3000');
+      console.log('    Create your account on first visit.\n');
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);
       process.exit(1);

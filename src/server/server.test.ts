@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 import { getDb } from '../db/db.js';
+import { SqliteDataStore } from '../db/sqlite-store.js';
 import { createServer } from './server.js';
 import { AuditLog } from '../audit/log.js';
 import { TokenManager } from '../auth/token-manager.js';
+import type { DataStore } from '../db/datastore.js';
 import type { DataRow, SourceConnector, ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type Database from 'better-sqlite3';
@@ -44,6 +46,7 @@ function makeMockConnector(): SourceConnector {
 
 function makeConfig(): HubConfigParsed {
   return {
+    deployment: { gateway: 'local', database: 'sqlite' },
     sources: {
       gmail: {
         enabled: true,
@@ -72,16 +75,18 @@ async function request(app: Hono, method: string, path: string, body?: unknown, 
 describe('HTTP Server', () => {
   let tmpDir: string;
   let db: Database.Database;
+  let store: DataStore;
   let app: Hono;
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
     db = getDb(join(tmpDir, 'test.db'));
+    store = new SqliteDataStore(db);
 
     const registry: ConnectorRegistry = new Map([['gmail', makeMockConnector()]]);
-    const tokenManager = new TokenManager(db, 'test-secret');
+    const tokenManager = new TokenManager(store, 'test-secret');
     app = createServer({
-      db,
+      store,
       connectorRegistry: registry,
       config: makeConfig(),
       tokenManager,
@@ -106,8 +111,8 @@ describe('HTTP Server', () => {
   });
 
   it('POST /app/v1/pull with connected source → 200', async () => {
-    const tokenManager = new TokenManager(db, 'test-secret');
-    tokenManager.storeToken('gmail', { access_token: 'tok', refresh_token: 'ref' });
+    const tokenManager = new TokenManager(store, 'test-secret');
+    await tokenManager.storeToken('gmail', { access_token: 'tok', refresh_token: 'ref' });
 
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
@@ -120,8 +125,8 @@ describe('HTTP Server', () => {
   });
 
   it('POST /app/v1/pull with purpose → returns data, audit log entry', async () => {
-    const tokenManager = new TokenManager(db, 'test-secret');
-    tokenManager.storeToken('gmail', { access_token: 'tok', refresh_token: 'ref' });
+    const tokenManager = new TokenManager(store, 'test-secret');
+    await tokenManager.storeToken('gmail', { access_token: 'tok', refresh_token: 'ref' });
 
     const res = await request(app, 'POST', '/app/v1/pull', {
       source: 'gmail',
@@ -135,8 +140,8 @@ describe('HTTP Server', () => {
     expect(json.data.length).toBeGreaterThan(0);
 
     // Check audit log
-    const audit = new AuditLog(db);
-    const entries = audit.getEntries({ event: 'data_pull' });
+    const audit = new AuditLog(store);
+    const entries = await audit.getEntries({ event: 'data_pull' });
     expect(entries).toHaveLength(1);
     expect(entries[0].details.purpose).toBe('Find Q4 report emails');
   });
@@ -172,8 +177,8 @@ describe('HTTP Server', () => {
     expect(staging[0].status).toBe('pending');
 
     // Check audit log
-    const audit = new AuditLog(db);
-    const entries = audit.getEntries({ event: 'action_proposed' });
+    const audit = new AuditLog(store);
+    const entries = await audit.getEntries({ event: 'action_proposed' });
     expect(entries).toHaveLength(1);
     expect(entries[0].details.purpose).toBe('Draft reply to Alice about Q4 report');
   });
@@ -197,8 +202,8 @@ describe('HTTP Server', () => {
 
     it('returns connected: true when source has an oauth token', async () => {
       // Store a token for gmail
-      const tokenManager = new TokenManager(db, 'test-secret');
-      tokenManager.storeToken('gmail', {
+      const tokenManager = new TokenManager(store, 'test-secret');
+      await tokenManager.storeToken('gmail', {
         access_token: 'test-token',
         refresh_token: 'test-refresh',
       });

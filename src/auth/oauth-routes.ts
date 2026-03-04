@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { google } from 'googleapis';
-import type Database from 'better-sqlite3';
+import type { DataStore } from '../db/datastore.js';
 import type { ConnectorRegistry } from '../connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
 import type { TokenManager } from './token-manager.js';
@@ -11,43 +11,30 @@ import { GitHubConnector } from '../connectors/github/connector.js';
 import { generateCodeVerifier, computeCodeChallenge, getGmailCredentials, getGitHubCredentials } from './pkce.js';
 
 interface OAuthDeps {
-  db: Database.Database;
+  store: DataStore;
   connectorRegistry: ConnectorRegistry;
   config: HubConfigParsed;
   tokenManager: TokenManager;
 }
-
-// CSRF state store: state -> { source, createdAt, codeVerifier }
-const pendingStates = new Map<string, { source: string; createdAt: number; codeVerifier: string }>();
-
-// Clean up stale states every 5 minutes
-const STATE_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, entry] of pendingStates) {
-    if (now - entry.createdAt > STATE_MAX_AGE_MS) {
-      pendingStates.delete(state);
-    }
-  }
-}, 5 * 60 * 1000).unref();
 
 const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.compose',
 ];
 
-function getBaseUrl(config: HubConfigParsed): string {
+export function getBaseUrl(config: HubConfigParsed): string {
+  if (config.deployment?.base_url) return config.deployment.base_url;
   const port = config.port ?? 3000;
   return `http://127.0.0.1:${port}`;
 }
 
 export function createOAuthRoutes(deps: OAuthDeps): Hono {
   const app = new Hono();
-  const auditLog = new AuditLog(deps.db);
+  const auditLog = new AuditLog(deps.store);
 
   // --- Gmail OAuth ---
 
-  app.get('/gmail/start', (c) => {
+  app.get('/gmail/start', async (c) => {
     const gmailConfig = deps.config.sources.gmail;
     if (!gmailConfig) {
       return c.redirect('/?oauth_error=gmail_not_configured');
@@ -62,7 +49,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     const codeChallenge = computeCodeChallenge(codeVerifier);
 
     const state = randomBytes(32).toString('hex');
-    pendingStates.set(state, { source: 'gmail', createdAt: Date.now(), codeVerifier });
+    await deps.store.setOAuthState(state, { source: 'gmail', createdAt: Date.now(), codeVerifier });
 
     const oauth2Client = new google.auth.OAuth2(
       clientId,
@@ -97,12 +84,11 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     }
 
     // Validate CSRF state
-    const pending = pendingStates.get(state);
+    const pending = await deps.store.getAndDeleteOAuthState(state);
     if (!pending || pending.source !== 'gmail') {
       return c.redirect('/?oauth_error=invalid_state');
     }
     const { codeVerifier } = pending;
-    pendingStates.delete(state);
 
     const { clientId, clientSecret } = getGmailCredentials(deps.config);
 
@@ -137,7 +123,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
         : undefined;
 
       // Store tokens encrypted
-      deps.tokenManager.storeToken('gmail', {
+      await deps.tokenManager.storeToken('gmail', {
         access_token: tokens.access_token!,
         refresh_token: tokens.refresh_token ?? undefined,
         token_type: tokens.token_type ?? 'Bearer',
@@ -160,16 +146,16 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
       deps.connectorRegistry.set('gmail', connector);
 
       // Wire up token refresh event so refreshed tokens get persisted
-      connector.getAuth().on('tokens', (newTokens) => {
+      connector.getAuth().on('tokens', async (newTokens) => {
         if (newTokens.access_token) {
           const newExpiry = newTokens.expiry_date
             ? new Date(newTokens.expiry_date).toISOString()
             : undefined;
-          deps.tokenManager.updateAccessToken('gmail', newTokens.access_token, newExpiry);
+          await deps.tokenManager.updateAccessToken('gmail', newTokens.access_token, newExpiry);
         }
       });
 
-      auditLog.insert('oauth_connected', 'gmail', {
+      await auditLog.insert('oauth_connected', 'gmail', {
         email: userInfo.data.email,
       });
 
@@ -180,16 +166,16 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     }
   });
 
-  app.post('/gmail/disconnect', (c) => {
-    deps.tokenManager.deleteToken('gmail');
+  app.post('/gmail/disconnect', async (c) => {
+    await deps.tokenManager.deleteToken('gmail');
     deps.connectorRegistry.delete('gmail');
-    auditLog.insert('oauth_disconnected', 'gmail', {});
+    await auditLog.insert('oauth_disconnected', 'gmail', {});
     return c.json({ ok: true });
   });
 
   // --- GitHub OAuth ---
 
-  app.get('/github/start', (c) => {
+  app.get('/github/start', async (c) => {
     const githubConfig = deps.config.sources.github;
     if (!githubConfig) {
       return c.redirect('/?oauth_error=github_not_configured');
@@ -204,7 +190,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     const codeChallenge = computeCodeChallenge(codeVerifier);
 
     const state = randomBytes(32).toString('hex');
-    pendingStates.set(state, { source: 'github', createdAt: Date.now(), codeVerifier });
+    await deps.store.setOAuthState(state, { source: 'github', createdAt: Date.now(), codeVerifier });
 
     const redirectUri = `${getBaseUrl(deps.config)}/oauth/github/callback`;
     const authUrl =
@@ -230,12 +216,11 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
       return c.redirect('/?oauth_error=missing_code_or_state');
     }
 
-    const pending = pendingStates.get(state);
+    const pending = await deps.store.getAndDeleteOAuthState(state);
     if (!pending || pending.source !== 'github') {
       return c.redirect('/?oauth_error=invalid_state');
     }
     const { codeVerifier } = pending;
-    pendingStates.delete(state);
 
     const githubConfig = deps.config.sources.github;
     const { clientId, clientSecret } = getGitHubCredentials(deps.config);
@@ -292,7 +277,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
         ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
         : undefined;
 
-      deps.tokenManager.storeToken('github', {
+      await deps.tokenManager.storeToken('github', {
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token,
         token_type: tokenData.token_type ?? 'Bearer',
@@ -315,7 +300,7 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
       });
       deps.connectorRegistry.set('github', connector);
 
-      auditLog.insert('oauth_connected', 'github', {
+      await auditLog.insert('oauth_connected', 'github', {
         login: userData.login,
       });
 
@@ -326,10 +311,10 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     }
   });
 
-  app.post('/github/disconnect', (c) => {
-    deps.tokenManager.deleteToken('github');
+  app.post('/github/disconnect', async (c) => {
+    await deps.tokenManager.deleteToken('github');
     deps.connectorRegistry.delete('github');
-    auditLog.insert('oauth_disconnected', 'github', {});
+    await auditLog.insert('oauth_disconnected', 'github', {});
     return c.json({ ok: true });
   });
 

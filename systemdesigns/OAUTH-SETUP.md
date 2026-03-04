@@ -119,10 +119,10 @@ sources:
 
 | Source | Redirect URI                                         |
 |--------|------------------------------------------------------|
-| Gmail  | `http://127.0.0.1:<port>/oauth/gmail/callback`      |
-| GitHub | `http://127.0.0.1:<port>/oauth/github/callback`     |
+| Gmail  | `<base_url>/oauth/gmail/callback`                    |
+| GitHub | `<base_url>/oauth/github/callback`                   |
 
-Default port is `3000` (configurable in `hub-config.yaml` via `port: N`).
+Default `base_url` for local is `http://127.0.0.1:3000` (configurable via `deployment.base_url` or `port` in `hub-config.yaml`).
 
 Gmail Desktop app credentials do not require manual redirect URI configuration.
-GitHub Apps always require the callback URL to be set in the app settings.
+GitHub Apps always require callback URLs to be set in the app settings.
