@@ -1,12 +1,12 @@
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getDb } from '../../src/db/db.js';
-import { SqliteDataStore } from '../../src/db/sqlite-store.js';
-import { createServer } from '../../src/server/server.js';
-import { TokenManager } from '../../src/auth/token-manager.js';
-import { AuditLog } from '../../src/audit/log.js';
-import type { DataRow, SourceConnector, ConnectorRegistry } from '../../src/connectors/types.js';
+import { getDb } from '../../src/database/db.js';
+import { SqliteDataStore } from '../../src/database/sqlite-store.js';
+import { createServer } from '../../src/gateway/server.js';
+import { TokenManager } from '../../src/gateway/auth/token-manager.js';
+import { AuditLog } from '../../src/gateway/audit/log.js';
+import type { DataRow, SourceConnector, ConnectorRegistry } from '../../src/gateway/connectors/types.js';
 import type { HubConfigParsed } from '../../src/config/schema.js';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';

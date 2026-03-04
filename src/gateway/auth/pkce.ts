@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto';
-import type { HubConfigParsed } from '../config/schema.js';
+import type { HubConfigParsed } from '../../config/schema.js';
 
 // --- PKCE utilities ---
 

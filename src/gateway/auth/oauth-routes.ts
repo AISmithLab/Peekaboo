@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
 import { google } from 'googleapis';
-import type { DataStore } from '../db/datastore.js';
+import type { DataStore } from '../../database/datastore.js';
 import type { ConnectorRegistry } from '../connectors/types.js';
-import type { HubConfigParsed } from '../config/schema.js';
+import type { HubConfigParsed } from '../../config/schema.js';
 import type { TokenManager } from './token-manager.js';
 import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';

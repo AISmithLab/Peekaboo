@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import type { DataStore } from '../db/datastore.js';
-import type { ConnectorRegistry } from '../connectors/types.js';
+import type { DataStore } from '../database/datastore.js';
+import type { ConnectorRegistry } from './connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
-import type { TokenManager } from '../auth/token-manager.js';
-import { AuditLog } from '../audit/log.js';
-import { applyFilters, type QuickFilter } from '../filters.js';
+import type { TokenManager } from './auth/token-manager.js';
+import { AuditLog } from './audit/log.js';
+import { applyFilters, type QuickFilter } from './filters.js';
 
 export interface AppApiDeps {
   store: DataStore;

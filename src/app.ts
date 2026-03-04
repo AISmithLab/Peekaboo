@@ -5,11 +5,11 @@
 
 import { resolve } from 'node:path';
 import type { Hono } from 'hono';
-import type { DataStore } from './db/datastore.js';
-import type { ConnectorRegistry } from './connectors/types.js';
+import type { DataStore } from './database/datastore.js';
+import type { ConnectorRegistry } from './gateway/connectors/types.js';
 import type { HubConfigParsed } from './config/schema.js';
-import type { TokenManager } from './auth/token-manager.js';
-import { createGateway } from './gateway.js';
+import type { TokenManager } from './gateway/auth/token-manager.js';
+import { createGateway } from './gateway/gateway.js';
 
 export interface AppResult {
   app: Hono;
@@ -27,11 +27,11 @@ export async function createApp(config: HubConfigParsed): Promise<AppResult> {
     if (!tableName) {
       throw new Error('deployment.dynamodb_table (or DYNAMODB_TABLE env var) is required when database is "dynamodb"');
     }
-    const { DynamoDataStore } = await import('./db/dynamo-store.js');
+    const { DynamoDataStore } = await import('./database/dynamo-store.js');
     store = new DynamoDataStore(tableName);
   } else {
-    const { getDb } = await import('./db/db.js');
-    const { SqliteDataStore } = await import('./db/sqlite-store.js');
+    const { getDb } = await import('./database/db.js');
+    const { SqliteDataStore } = await import('./database/sqlite-store.js');
     store = new SqliteDataStore(getDb(resolve('pdh.db')));
   }
 

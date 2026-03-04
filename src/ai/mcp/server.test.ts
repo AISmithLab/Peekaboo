@@ -8,11 +8,11 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 // Mock readConfig
-vi.mock('../cli.js', () => ({
+vi.mock('../../cli.js', () => ({
   readConfig: vi.fn(),
 }));
 
-import { readConfig } from '../cli.js';
+import { readConfig } from '../../cli.js';
 const mockReadConfig = vi.mocked(readConfig);
 
 // Import after mocks

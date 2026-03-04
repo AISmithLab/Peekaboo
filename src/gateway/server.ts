@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import type { DataStore } from '../db/datastore.js';
-import type { ConnectorRegistry } from '../connectors/types.js';
+import type { DataStore } from '../database/datastore.js';
+import type { ConnectorRegistry } from './connectors/types.js';
 import type { HubConfigParsed } from '../config/schema.js';
-import type { TokenManager } from '../auth/token-manager.js';
+import type { TokenManager } from './auth/token-manager.js';
 import { createAppApi } from './app-api.js';
-import { createGuiRoutes } from '../gui/routes.js';
-import { createOAuthRoutes } from '../auth/oauth-routes.js';
-import { createLoginRoutes } from '../auth/login-routes.js';
+import { createGuiRoutes } from './gui/routes.js';
+import { createOAuthRoutes } from './auth/oauth-routes.js';
+import { createLoginRoutes } from './auth/login-routes.js';
 
 export interface ServerDeps {
   store: DataStore;

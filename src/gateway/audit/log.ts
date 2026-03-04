@@ -1,4 +1,4 @@
-import type { DataStore } from '../db/datastore.js';
+import type { DataStore } from '../../database/datastore.js';
 
 export interface AuditEntry {
   id: number;

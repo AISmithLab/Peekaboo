@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
-import { getDb } from '../db/db.js';
-import { SqliteDataStore } from '../db/sqlite-store.js';
+import { getDb } from '../../database/db.js';
+import { SqliteDataStore } from '../../database/sqlite-store.js';
 import { AuditLog } from './log.js';
 import type Database from 'better-sqlite3';
-import { makeTmpDir } from '../test-utils.js';
+import { makeTmpDir } from '../../test-utils.js';
 
 describe('AuditLog', () => {
   let tmpDir: string;

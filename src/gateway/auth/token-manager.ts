@@ -1,5 +1,5 @@
-import type { DataStore } from '../db/datastore.js';
-import { encryptField, decryptField } from '../db/encryption.js';
+import type { DataStore } from '../../database/datastore.js';
+import { encryptField, decryptField } from '../../database/encryption.js';
 
 export interface TokenData {
   access_token: string;

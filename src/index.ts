@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from './config/loader.js';
-import { startServer } from './server/server.js';
+import { startServer } from './gateway/server.js';
 import { createApp } from './app.js';
 
 const configPath = process.argv[2] ?? resolve('hub-config.yaml');

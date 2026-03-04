@@ -7,13 +7,13 @@
  */
 
 import type { Hono } from 'hono';
-import type { DataStore } from './db/datastore.js';
-import type { HubConfigParsed } from './config/schema.js';
+import type { DataStore } from '../database/datastore.js';
+import type { HubConfigParsed } from '../config/schema.js';
 import type { ConnectorRegistry } from './connectors/types.js';
 import { TokenManager } from './auth/token-manager.js';
 import { GmailConnector } from './connectors/gmail/connector.js';
 import { GitHubConnector } from './connectors/github/connector.js';
-import { createServer, type ServerDeps } from './server/server.js';
+import { createServer, type ServerDeps } from './server.js';
 
 export interface GatewayOptions {
   store: DataStore;

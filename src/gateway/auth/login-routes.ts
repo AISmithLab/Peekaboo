@@ -11,7 +11,7 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import { hashSync, compareSync } from 'bcryptjs';
-import type { DataStore } from '../db/datastore.js';
+import type { DataStore } from '../../database/datastore.js';
 
 interface LoginDeps {
   store: DataStore;

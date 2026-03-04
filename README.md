@@ -227,17 +227,26 @@ Returns which sources are configured and which have active OAuth connections. Us
 
 ```
 src/
-├── auth/           OAuth flows, PKCE, token management
-├── config/         YAML config loading + Zod schema
-├── connectors/     Source adapters (Gmail, GitHub)
-├── db/             SQLite schema, encryption helpers
-├── filters.ts      Quick filter types, catalog, and apply logic
-├── mcp/            MCP stdio server with source-specific tools
-├── server/         HTTP server + app API routes
-├── gui/            Web admin dashboard
-├── audit/          Immutable audit trail
-├── cli.ts          CLI commands (init, start, stop, status, mcp, reset)
-└── index.ts        Server entrypoint
+├── gateway/          REST APIs, filters, data source connectors
+│   ├── server.ts       HTTP server, route mounting
+│   ├── app-api.ts      /pull, /propose, /sources endpoints
+│   ├── gateway.ts      Connector wiring and setup
+│   ├── filters.ts      Quick filter types and apply logic
+│   ├── auth/           OAuth flows, PKCE, token management
+│   ├── connectors/     Source adapters (Gmail, GitHub)
+│   ├── gui/            Web admin dashboard
+│   └── audit/          Immutable audit trail
+├── database/         Storage abstraction and implementations
+│   ├── datastore.ts    DataStore interface
+│   ├── sqlite-store.ts SQLite implementation
+│   ├── dynamo-store.ts DynamoDB implementation (serverless)
+│   └── encryption.ts   AES-256-GCM field encryption
+├── ai/               AI agent integration
+│   └── mcp/            MCP stdio server with source-specific tools
+├── config/           YAML config loading + Zod schema
+├── cli.ts            CLI commands (init, start, stop, mcp, reset)
+├── app.ts            Composition root (wires all components)
+└── index.ts          Server entrypoint
 skills/
 └── email-assistant/  Claude Code skill for email workflows
 ```

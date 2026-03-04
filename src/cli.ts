@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn, execSync } from 'node:child_process';
-import { getDb } from './db/db.js';
+import { getDb } from './database/db.js';
 import { osUserExists, createOsUser, lockdownFiles, checkProcessOwner, PDH_USER, ensureSudo, isRunningAsPdhUser } from './os-user.js';
 
 
@@ -491,7 +491,7 @@ if (isDirectRun) {
     }
   } else if (command === 'mcp') {
     try {
-      const { startMcpServer } = await import('./mcp/server.js');
+      const { startMcpServer } = await import('./ai/mcp/server.js');
       await startMcpServer();
     } catch (err) {
       console.error(`Error: ${(err as Error).message}`);

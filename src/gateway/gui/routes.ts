@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import type { DataStore } from '../db/datastore.js';
+import type { DataStore } from '../../database/datastore.js';
 import type { ConnectorRegistry } from '../connectors/types.js';
-import type { HubConfigParsed } from '../config/schema.js';
+import type { HubConfigParsed } from '../../config/schema.js';
 import type { TokenManager } from '../auth/token-manager.js';
 import { google } from 'googleapis';
 import { AuditLog } from '../audit/log.js';

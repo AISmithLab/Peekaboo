@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
-import { getDb } from '../db/db.js';
-import { SqliteDataStore } from '../db/sqlite-store.js';
-import { createServer } from '../server/server.js';
+import { getDb } from '../../database/db.js';
+import { SqliteDataStore } from '../../database/sqlite-store.js';
+import { createServer } from '../server.js';
 import { TokenManager } from '../auth/token-manager.js';
 import type { ConnectorRegistry, SourceConnector, ActionResult } from '../connectors/types.js';
-import type { HubConfigParsed } from '../config/schema.js';
+import type { HubConfigParsed } from '../../config/schema.js';
 import type Database from 'better-sqlite3';
 import type { Hono } from 'hono';
-import { makeTmpDir } from '../test-utils.js';
+import { makeTmpDir } from '../../test-utils.js';
 
 function makeConfig(): HubConfigParsed {
   return {
