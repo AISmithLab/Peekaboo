@@ -20,7 +20,9 @@ export function createAppApi(deps: AppApiDeps): Hono {
 
   // POST /pull
   app.post('/pull', async (c) => {
+    console.log('[app-api] /pull handler entered');
     const body = await c.req.json();
+    console.log('[app-api] /pull body:', JSON.stringify(body));
     const { source, purpose } = body;
 
     if (!purpose) {
