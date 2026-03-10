@@ -35,16 +35,19 @@ The example below is for **macOS**. For **Linux (Ubuntu)**, see the [full Setup 
 sudo sysadminctl -addUser personaldatahub -shell /bin/zsh -password -
 sudo mkdir -p /Users/personaldatahub && sudo chown personaldatahub:staff /Users/personaldatahub
 
-# 2. Install and start (as personaldatahub)
+# 2. Install and start the server (as personaldatahub)
 sudo -u personaldatahub -i
 cd ~ && git clone https://github.com/AISmithLab/PersonalDataHub.git
 cd PersonalDataHub && pnpm install && pnpm build
 npx pdh init    # save the owner password it prints
-npx pdh start. # node dist/index.js   This will keep the server in the foreground with all console output
-  visible.
+npx pdh start   # node dist/index.js   This will keep the server in the foreground with all console output visible.
 exit
 
-# 3. Connect your agent (as your main user)
+# 3. Build the project under your main user (needed for the MCP client)
+cd <your-local-clone-of-PersonalDataHub>
+pnpm install && pnpm build
+
+# 4. Point your main user at the running server
 mkdir -p ~/.pdh
 echo '{"hubUrl":"http://localhost:3000","hubDir":"/Users/personaldatahub/PersonalDataHub"}' > ~/.pdh/config.json
 ```
@@ -70,7 +73,8 @@ You can connect multiple AI agents — each one that needs access to your person
   "mcpServers": {
     "personaldatahub": {
       "command": "npx",
-      "args": ["pdh", "mcp"]
+      "args": ["pdh", "mcp"],
+      "cwd": "<your-local-clone-of-PersonalDataHub>"
     }
   }
 }
