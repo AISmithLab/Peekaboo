@@ -49,11 +49,18 @@ const deploymentSchema = z.object({
   dynamodb_table: z.string().optional(),
 });
 
+const pipelineConfigSchema = z.object({
+  allow_custom_pipelines: z.boolean().default(false),
+  required_operators: z.array(z.string()).default([]),
+  max_steps: z.number().int().positive().default(20),
+});
+
 export const hubConfigSchema = z.object({
   deployment: deploymentSchema.default({ gateway: 'local', database: 'sqlite' }),
   sources: z.record(z.string(), sourceConfigSchema).default({}),
   encryption_key: z.string().optional(),
   ai: aiProviderSchema.optional(),
+  pipeline: pipelineConfigSchema.default({}),
   port: z.number().default(3000),
 });
 

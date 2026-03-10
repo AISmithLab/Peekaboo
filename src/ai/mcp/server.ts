@@ -201,6 +201,44 @@ function registerGitHubTools(server: McpServer, hubUrl: string): void {
   );
 }
 
+function registerPipelineTool(server: McpServer, hubUrl: string): void {
+  const stepSchema = z.object({
+    op: z.string().describe('Operator name: pull_source, time_window, select_fields, exclude_fields, filter_rows, has_attachment, redact_pii, limit'),
+    source: z.string().optional().describe('(pull_source) Data source name'),
+    query: z.string().optional().describe('(pull_source) Source-specific search query'),
+    after: z.string().optional().describe('(time_window) Keep rows at or after this ISO date'),
+    before: z.string().optional().describe('(time_window) Keep rows at or before this ISO date'),
+    fields: z.array(z.string()).optional().describe('(select_fields/exclude_fields) Field names'),
+    field: z.string().optional().describe('(filter_rows) Field to match against'),
+    or_field: z.string().optional().describe('(filter_rows) Secondary field to match'),
+    contains: z.string().optional().describe('(filter_rows) Substring to search for'),
+    mode: z.enum(['include', 'exclude']).optional().describe('(filter_rows) Include or exclude matching rows'),
+    patterns: z.array(z.string()).optional().describe('(redact_pii) Custom regex patterns'),
+    max: z.number().optional().describe('(limit) Maximum number of rows'),
+  });
+
+  server.tool(
+    'run_pipeline',
+    'Execute a data pipeline against a source. Pipelines are declarative: specify a sequence of operators to filter, transform, and minimize data. Must include a pull_source step. The owner\'s access control filters are always applied on top.',
+    {
+      pipeline: z.string().describe('Pipeline name (for audit logging)'),
+      steps: z.array(stepSchema).describe('Ordered list of pipeline steps'),
+      purpose: z.string().describe('Why this data is needed (logged for audit)'),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async ({ pipeline, steps, purpose }) => {
+      const res = await fetch(`${hubUrl}/app/v1/pull/pipeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pipeline, steps, purpose }),
+      });
+
+      const json = await res.json();
+      return { content: [{ type: 'text' as const, text: JSON.stringify(json, null, 2) }] };
+    },
+  );
+}
+
 export async function startMcpServer(): Promise<McpServer> {
   const config = readConfig();
   if (!config) {
@@ -220,22 +258,25 @@ export async function startMcpServer(): Promise<McpServer> {
     version: '0.1.0',
   });
 
-  const registeredTools: string[] = [];
+  const sourceTools: string[] = [];
 
   if (sources.gmail?.connected) {
     registerGmailTools(server, hubUrl);
-    registeredTools.push('read_emails', 'draft_email', 'send_email', 'reply_to_email');
+    sourceTools.push('read_emails', 'draft_email', 'send_email', 'reply_to_email');
   }
 
   if (sources.github?.connected) {
     registerGitHubTools(server, hubUrl);
-    registeredTools.push('search_github_issues', 'search_github_prs');
+    sourceTools.push('search_github_issues', 'search_github_prs');
   }
 
-  if (registeredTools.length === 0) {
+  // Pipeline tool is always available (validation happens server-side)
+  registerPipelineTool(server, hubUrl);
+
+  if (sourceTools.length === 0) {
     console.error('Warning: No connected sources found. Connect sources via the GUI at ' + hubUrl);
   } else {
-    console.error(`PersonalDataHub MCP server started with tools: ${registeredTools.join(', ')}`);
+    console.error(`PersonalDataHub MCP server started with tools: ${[...sourceTools, 'run_pipeline'].join(', ')}`);
   }
 
   const transport = new StdioServerTransport();
