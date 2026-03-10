@@ -437,6 +437,7 @@ const isDirectRun = (() => {
 })();
 
 if (isDirectRun) {
+  (async () => {
   const command = process.argv[2];
 
   if (command === 'init') {
@@ -561,4 +562,5 @@ if (isDirectRun) {
     console.log('  npx pdh uninstall-service Remove the auto-start service');
     console.log('  npx pdh reset             Remove all generated files and start fresh');
   }
+  })();
 }
