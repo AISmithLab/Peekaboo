@@ -59,14 +59,18 @@ export function createAppApi(deps: AppApiDeps): Hono {
     const filters = await deps.store.getEnabledFiltersBySource(source) as QuickFilter[];
     const filtered = applyFilters(rows, filters);
 
-    // Log to audit
-    await auditLog.logPull(source, purpose, filtered.length, 'agent');
-
-    return c.json({
+    // Build response
+    const responsePayload = {
       ok: true,
       data: filtered,
       meta: { itemsFetched: rows.length, itemsReturned: filtered.length },
-    });
+    };
+
+    // Log to audit with a summary of what the agent received
+    const responseSummary = JSON.stringify(responsePayload).slice(0, 500);
+    await auditLog.logPull(source, purpose, filtered.length, 'agent', responseSummary);
+
+    return c.json(responsePayload);
   });
 
   // POST /propose
@@ -93,14 +97,18 @@ export function createAppApi(deps: AppApiDeps): Hono {
       purpose,
     });
 
-    // Log to audit
-    await auditLog.logActionProposed(actionId, source, action_type, purpose, 'agent');
-
-    return c.json({
+    // Build response
+    const responsePayload = {
       ok: true,
       actionId,
       status: 'pending_review',
-    });
+    };
+
+    // Log to audit with a summary of what the agent received
+    const responseSummary = JSON.stringify(responsePayload);
+    await auditLog.logActionProposed(actionId, source, action_type, purpose, 'agent', responseSummary);
+
+    return c.json(responsePayload);
   });
 
   // GET /sources — discover which sources are connected (have OAuth tokens)

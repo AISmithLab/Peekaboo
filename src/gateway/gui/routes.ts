@@ -857,11 +857,12 @@ function getIndexHtml(): string {
           else if (e.event.indexOf('proposed') !== -1) evClass = 'pending';
           var time = new Date(e.timestamp);
           var timeStr = time.getHours().toString().padStart(2,'0') + ':' + time.getMinutes().toString().padStart(2,'0');
-          return '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px">' +
+          var respLine = d.responseSummary ? '<div style="padding:2px 0 4px 52px;border-bottom:1px solid var(--border)"><details style="font-size:12px;color:var(--muted);cursor:pointer"><summary style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><em>Response:</em> ' + d.responseSummary.slice(0, 80) + (d.responseSummary.length > 80 ? '...' : '') + '</summary><pre style="white-space:pre-wrap;word-break:break-all;margin:4px 0;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;max-height:150px;overflow:auto;font-size:11px">' + d.responseSummary.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre></details></div>' : '';
+          return '<div style="display:flex;align-items:center;gap:12px;padding:8px 0;' + (respLine ? '' : 'border-bottom:1px solid var(--border);') + 'font-size:14px">' +
             '<span class="font-mono" style="font-size:14px;color:var(--muted);min-width:40px">' + timeStr + '</span>' +
             '<span class="status ' + evClass + '" style="font-size:14px">' + e.event + '</span>' +
             '<span style="flex:1;color:var(--muted);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (d.purpose || d.result || (e.source || '')) + '</span>' +
-            '</div>';
+            '</div>' + respLine;
         }).join('');
       } else {
         recentHtml = '<p class="empty">No recent activity.</p>';
@@ -1248,10 +1249,16 @@ function getIndexHtml(): string {
       return \`
         <div class="card">
           <h2>Audit Log</h2>
-          \${state.audit.length ? '<table><tr><th>Time</th><th>Event</th><th>Source</th><th>Details</th></tr>' +
+          \${state.audit.length ? '<table><tr><th>Time</th><th>Event</th><th>Source</th><th>Details</th><th>Response</th></tr>' +
             state.audit.map(e => {
               const d = typeof e.details === 'string' ? JSON.parse(e.details) : e.details;
-              return '<tr><td style="font-size:14px">' + new Date(e.timestamp).toLocaleString() + '</td><td>' + e.event + '</td><td>' + (e.source || '-') + '</td><td style="font-size:14px">' + JSON.stringify(d).slice(0,100) + '</td></tr>';
+              const resp = d.responseSummary || '';
+              const detailsCopy = Object.assign({}, d);
+              delete detailsCopy.responseSummary;
+              const respCell = resp
+                ? '<details style="font-size:13px;max-width:400px;cursor:pointer"><summary style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:300px">' + resp.slice(0,80) + (resp.length > 80 ? '...' : '') + '</summary><pre style="white-space:pre-wrap;word-break:break-all;margin:6px 0;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;max-height:200px;overflow:auto;font-size:12px">' + resp.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre></details>'
+                : '-';
+              return '<tr><td style="font-size:14px">' + new Date(e.timestamp).toLocaleString() + '</td><td>' + e.event + '</td><td>' + (e.source || '-') + '</td><td style="font-size:14px">' + JSON.stringify(detailsCopy).slice(0,100) + '</td><td>' + respCell + '</td></tr>';
             }).join('') +
             '</table>' : '<p class="empty">No audit entries.</p>'}
         </div>

@@ -28,8 +28,8 @@ export class AuditLog {
     });
   }
 
-  async logPull(source: string, purpose: string, resultsReturned: number, initiatedBy: string): Promise<void> {
-    await this.insert('data_pull', source, { purpose, resultsReturned, initiatedBy });
+  async logPull(source: string, purpose: string, resultsReturned: number, initiatedBy: string, responseSummary?: string): Promise<void> {
+    await this.insert('data_pull', source, { purpose, resultsReturned, initiatedBy, ...(responseSummary != null && { responseSummary }) });
   }
 
   async logActionProposed(
@@ -38,8 +38,9 @@ export class AuditLog {
     actionType: string,
     purpose: string,
     initiatedBy: string,
+    responseSummary?: string,
   ): Promise<void> {
-    await this.insert('action_proposed', source, { actionId, action_type: actionType, purpose, initiatedBy });
+    await this.insert('action_proposed', source, { actionId, action_type: actionType, purpose, initiatedBy, ...(responseSummary != null && { responseSummary }) });
   }
 
   async logActionApproved(actionId: string, initiatedBy: string, source?: string): Promise<void> {
