@@ -890,6 +890,30 @@ function getIndexHtml(): string {
           });
       }
 
+      // Fetch real calendar events if Google Calendar is connected
+      const cal = state.sources.find(s => s.name === 'google_calendar');
+      if (cal && cal.connected && !state.realEvents && !state.eventsLoading) {
+        state.eventsLoading = true;
+        state.eventsError = null;
+        fetch('/api/calendar/preview?limit=20')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            state.eventsLoading = false;
+            if (data.ok && data.events) {
+              state.realEvents = data.events;
+              state.eventsError = null;
+            } else {
+              state.eventsError = data.error || 'Failed to load events';
+            }
+            render();
+          })
+          .catch(function(err) {
+            state.eventsLoading = false;
+            state.eventsError = err.message || 'Network error';
+            render();
+          });
+      }
+
       render();
     }
 
@@ -1250,7 +1274,11 @@ function getIndexHtml(): string {
       var accountEmail = calAccount && calAccount.email ? calAccount.email : '';
 
       var events = state.realEvents || [];
-      var visibleEvents = events;
+      // Sort events by start date descending (most recent at top)
+      var sortedEvents = events.slice().sort(function(a, b) {
+        return new Date(b.start).getTime() - new Date(a.start).getTime();
+      });
+      var visibleEvents = sortedEvents;
 
       // Disconnected state
       if (!calConnected) {
@@ -1588,6 +1616,9 @@ function getIndexHtml(): string {
       var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
       typeKeys.forEach(function(typeKey) {
         var meta = types[typeKey];
+        var label = meta.label;
+        if (typeKey === 'time_after') label = 'Only events after';
+
         var existing = filters.find(function(f) { return f.type === typeKey; });
         var isEnabled = existing ? !!existing.enabled : false;
         var value = existing ? (existing.value || '') : '';
@@ -1602,7 +1633,7 @@ function getIndexHtml(): string {
         html += '<span style="position:absolute;inset:0;background:' + (isEnabled ? 'var(--primary)' : '#ccc') + ';border-radius:10px;transition:background 0.2s"></span>';
         html += '<span style="position:absolute;left:' + (isEnabled ? '18px' : '2px') + ';top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>';
         html += '</label>';
-        html += '<span style="font-size:14px;font-weight:500;color:' + (isEnabled ? 'var(--fg)' : 'var(--muted)') + '">' + escapeHtml(meta.label) + '</span>';
+        html += '<span style="font-size:14px;font-weight:500;color:' + (isEnabled ? 'var(--fg)' : 'var(--muted)') + '">' + escapeHtml(label) + '</span>';
         html += '</div>';
         if (needsValue) {
           html += '<input type="' + (typeKey === 'time_after' ? 'date' : 'text') + '" id="cal-filter-val-' + safeType + '" value="' + escapeAttr(value) + '" placeholder="' + escapeAttr(meta.placeholder) + '" onchange="updateCalendarFilterValue(&quot;' + safeType + '&quot;, this.value, &quot;' + escapeAttr(filterId) + '&quot;)" style="width:100%;font-size:13px;padding:6px 10px">';
@@ -1809,6 +1840,10 @@ function getIndexHtml(): string {
         state.realEmails = null;
         state.emailsLoading = false;
       }
+      if (source === 'google_calendar') {
+        state.realEvents = null;
+        state.eventsLoading = false;
+      }
       await fetchData();
     }
 
@@ -2014,10 +2049,19 @@ function getIndexHtml(): string {
       state.emailsLoading = false;
       fetchData();
     };
+    window.refreshCalendarEvents = function() {
+      state.realEvents = null;
+      state.eventsError = null;
+      state.eventsLoading = false;
+      fetchData();
+    };
     window.toggleEditAction = toggleEditAction;
     window.toggleFilter = toggleFilter;
     window.updateFilterValue = updateFilterValue;
     window.renderFilterCards = renderFilterCards;
+    window.toggleCalendarFilter = toggleCalendarFilter;
+    window.updateCalendarFilterValue = updateCalendarFilterValue;
+    window.renderCalendarFilterCards = renderCalendarFilterCards;
     window.sendAction = sendAction;
 
     // Handle OAuth redirect results

@@ -7,8 +7,9 @@ import type { HubConfigParsed } from '../../config/schema.js';
 import type { TokenManager } from './token-manager.js';
 import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';
+import { GoogleCalendarConnector } from '../connectors/calendar/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
-import { generateCodeVerifier, computeCodeChallenge, getGmailCredentials, getGitHubCredentials } from './pkce.js';
+import { generateCodeVerifier, computeCodeChallenge, getGmailCredentials, getGitHubCredentials, getCalendarCredentials } from './pkce.js';
 
 interface OAuthDeps {
   store: DataStore;
@@ -20,6 +21,11 @@ interface OAuthDeps {
 const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.compose',
+];
+
+const CALENDAR_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
 ];
 
 export function getBaseUrl(config: HubConfigParsed): string {
@@ -170,6 +176,120 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     await deps.tokenManager.deleteToken('gmail');
     deps.connectorRegistry.delete('gmail');
     await auditLog.insert('oauth_disconnected', 'gmail', {});
+    return c.json({ ok: true });
+  });
+
+  // --- Google Calendar OAuth ---
+
+  app.get('/google_calendar/start', async (c) => {
+    const calConfig = deps.config.sources.google_calendar;
+    if (!calConfig) {
+      return c.redirect('/?oauth_error=calendar_not_configured');
+    }
+
+    const { clientId, clientSecret } = getCalendarCredentials(deps.config);
+    if (!clientId || !clientSecret) {
+      return c.redirect('/?oauth_error=calendar_missing_credentials');
+    }
+
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = computeCodeChallenge(codeVerifier);
+
+    const state = randomBytes(32).toString('hex');
+    await deps.store.setOAuthState(state, { source: 'google_calendar', createdAt: Date.now(), codeVerifier });
+
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      `${getBaseUrl(deps.config)}/oauth/google_calendar/callback`,
+    );
+
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: CALENDAR_SCOPES,
+      state,
+      code_challenge: codeChallenge,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      code_challenge_method: 'S256' as any,
+    });
+
+    return c.redirect(authUrl);
+  });
+
+  app.get('/google_calendar/callback', async (c) => {
+    const code = c.req.query('code');
+    const state = c.req.query('state');
+    const error = c.req.query('error');
+
+    if (error) {
+      return c.redirect(`/?oauth_error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code || !state) {
+      return c.redirect('/?oauth_error=missing_code_or_state');
+    }
+
+    const pending = await deps.store.getAndDeleteOAuthState(state);
+    if (!pending || pending.source !== 'google_calendar') {
+      return c.redirect('/?oauth_error=invalid_state');
+    }
+    const { codeVerifier } = pending;
+
+    const { clientId, clientSecret } = getCalendarCredentials(deps.config);
+
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      `${getBaseUrl(deps.config)}/oauth/google_calendar/callback`,
+    );
+
+    try {
+      const { tokens } = await oauth2Client.getToken({ code, codeVerifier });
+      oauth2Client.setCredentials(tokens);
+
+      const expiresAt = tokens.expiry_date
+        ? new Date(tokens.expiry_date).toISOString()
+        : undefined;
+
+      await deps.tokenManager.storeToken('google_calendar', {
+        access_token: tokens.access_token!,
+        refresh_token: tokens.refresh_token ?? undefined,
+        token_type: tokens.token_type ?? 'Bearer',
+        expires_at: expiresAt,
+        scopes: CALENDAR_SCOPES.join(' '),
+      });
+
+      const connector = new GoogleCalendarConnector({
+        clientId,
+        clientSecret,
+        accessToken: tokens.access_token!,
+        refreshToken: tokens.refresh_token ?? undefined,
+      });
+      deps.connectorRegistry.set('google_calendar', connector);
+
+      connector.getAuth().on('tokens', async (newTokens) => {
+        if (newTokens.access_token) {
+          const newExpiry = newTokens.expiry_date
+            ? new Date(newTokens.expiry_date).toISOString()
+            : undefined;
+          await deps.tokenManager.updateAccessToken('google_calendar', newTokens.access_token, newExpiry);
+        }
+      });
+
+      await auditLog.insert('oauth_connected', 'google_calendar', {});
+
+      return c.redirect('/?oauth_success=google_calendar');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.redirect(`/?oauth_error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  app.post('/google_calendar/disconnect', async (c) => {
+    await deps.tokenManager.deleteToken('google_calendar');
+    deps.connectorRegistry.delete('google_calendar');
+    await auditLog.insert('oauth_disconnected', 'google_calendar', {});
     return c.json({ ok: true });
   });
 

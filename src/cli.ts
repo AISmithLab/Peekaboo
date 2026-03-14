@@ -139,6 +139,12 @@ export async function init(targetDir?: string, options?: InitOptions): Promise<I
         '      type: oauth2',
         `      clientId: "${oauthCreds.google.clientId}"`,
         `      clientSecret: "${oauthCreds.google.clientSecret}"`,
+        '  google_calendar:',
+        '    enabled: true',
+        '    owner_auth:',
+        '      type: oauth2',
+        `      clientId: "${oauthCreds.google.clientId}"`,
+        `      clientSecret: "${oauthCreds.google.clientSecret}"`,
       );
     }
 

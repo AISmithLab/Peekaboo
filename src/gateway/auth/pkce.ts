@@ -49,3 +49,14 @@ export function getGitHubCredentials(config: HubConfigParsed): ResolvedCredentia
     clientSecret: githubConfig?.owner_auth.clientSecret ?? '',
   };
 }
+
+/**
+ * Returns Google Calendar OAuth credentials from config.
+ */
+export function getCalendarCredentials(config: HubConfigParsed): ResolvedCredentials {
+  const calConfig = config.sources.google_calendar;
+  return {
+    clientId: calConfig?.owner_auth.clientId ?? '',
+    clientSecret: calConfig?.owner_auth.clientSecret ?? '',
+  };
+}
