@@ -7,6 +7,7 @@ import type { TokenManager } from '../auth/token-manager.js';
 import { google } from 'googleapis';
 import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';
+import { GoogleCalendarConnector } from '../connectors/calendar/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
 import { Octokit } from 'octokit';
 import { FILTER_TYPES, applyFilters, type QuickFilter } from '../filters.js';
@@ -84,6 +85,21 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       }
     }
 
+    // Backfill Calendar account info if empty
+    const calSource = sources.find((s) => s.name === 'google_calendar' && s.connected);
+    if (calSource && (!calSource.accountInfo || !calSource.accountInfo.email)) {
+      const connector = deps.connectorRegistry.get('google_calendar');
+      if (connector && connector instanceof GoogleCalendarConnector) {
+        try {
+          const calApi = google.calendar({ version: 'v3', auth: connector.getAuth() });
+          const profile = await calApi.calendarList.get({ calendarId: 'primary' });
+          const info = { email: profile.data.id ?? undefined };
+          await deps.tokenManager.updateAccountInfo('google_calendar', info);
+          calSource.accountInfo = info;
+        } catch (_) { /* non-fatal */ }
+      }
+    }
+
     return c.json({ ok: true, sources });
   });
 
@@ -150,10 +166,18 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
         const connector = deps.connectorRegistry.get(action.source);
         if (connector) {
           try {
-            // Always save as Gmail draft on approve — owner sends manually from Gmail
+            const actionData = JSON.parse(action.action_data);
+            let actionType = action.action_type;
+
+            // If it's a gmail source and the user clicked 'Send' (which sets send: true in action_data),
+            // we override the actionType to 'send_email'.
+            if (action.source === 'gmail' && actionData.send) {
+              actionType = 'send_email';
+            }
+
             const result = await connector.executeAction(
-              'draft_email',
-              JSON.parse(action.action_data),
+              actionType,
+              actionData,
             );
             await deps.store.updateStagingStatus(actionId, 'committed');
             await auditLog.logActionCommitted(actionId, action.source, result.success ? 'success' : 'failure');
@@ -289,6 +313,82 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
     }
 
     return c.json({ ok: true });
+  });
+
+  // Fetch real calendar events from connected account
+  app.get('/api/calendar/events', async (c) => {
+    const connector = deps.connectorRegistry.get('google_calendar');
+    if (!connector || !(connector instanceof GoogleCalendarConnector)) {
+      return c.json({ ok: false, error: 'Calendar not connected' }, 401);
+    }
+
+    try {
+      const calConfig = deps.config.sources.google_calendar;
+      const boundary = calConfig?.boundary ?? {};
+      const limit = parseInt(c.req.query('limit') ?? '20', 10);
+      const rows = await connector.fetch(boundary, { limit });
+
+      const events = rows.map((row) => {
+        const d = row.data as Record<string, unknown>;
+        return {
+          id: row.source_item_id,
+          title: d.title || '',
+          start: d.start || '',
+          end: d.end || '',
+          location: d.location || '',
+          body: d.body || '',
+          url: d.url || '',
+          isAllDay: d.isAllDay || false,
+        };
+      });
+
+      return c.json({ ok: true, events });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.json({ ok: false, error: message }, 500);
+    }
+  });
+
+  // Preview calendar events with filters applied
+  app.get('/api/calendar/preview', async (c) => {
+    const connector = deps.connectorRegistry.get('google_calendar');
+    if (!connector || !(connector instanceof GoogleCalendarConnector)) {
+      return c.json({ ok: false, error: 'Calendar not connected' }, 401);
+    }
+
+    try {
+      const calConfig = deps.config.sources.google_calendar;
+      const boundary = calConfig?.boundary ?? {};
+      const limit = parseInt(c.req.query('limit') ?? '20', 10);
+      const rows = await connector.fetch(boundary, { limit });
+
+      const filters = await deps.store.getEnabledFiltersBySource('google_calendar') as QuickFilter[];
+      const filtered = applyFilters(rows, filters);
+
+      const mapRow = (row: import('../connectors/types.js').DataRow) => {
+        const d = row.data as Record<string, unknown>;
+        return {
+          id: row.source_item_id,
+          title: d.title || '',
+          start: d.start || '',
+          end: d.end || '',
+          location: d.location || '',
+          body: d.body || '',
+          url: d.url || '',
+          isAllDay: d.isAllDay || false,
+        };
+      };
+
+      return c.json({
+        ok: true,
+        events: filtered.map(mapRow),
+        totalFetched: rows.length,
+        afterFilters: filtered.length,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.json({ ok: false, error: message }, 500);
+    }
   });
 
   // Fetch real emails from connected Gmail account
@@ -686,17 +786,17 @@ function getIndexHtml(): string {
           <span class="status-dot status-dot-disconnected" id="gmail-dot"></span>
           <span class="nav-badge" id="gmail-badge" style="display:none">0</span>
         </a>
-        <a class="nav-item disabled">
+        <a class="nav-item" data-tab="github" onclick="switchTab('github')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
           <span class="nav-label">GitHub</span>
-          <span class="nav-badge-muted">soon</span>
+          <span class="status-dot status-dot-disconnected" id="github-dot"></span>
         </a>
-        <a class="nav-item disabled">
+        <a class="nav-item" data-tab="google_calendar" onclick="switchTab('google_calendar')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <span class="nav-label">Calendar</span>
-          <span class="nav-badge-muted">soon</span>
-        </a>
-        <a class="nav-item disabled">
+          <span class="status-dot status-dot-disconnected" id="calendar-dot"></span>
+          <span class="nav-badge" id="calendar-badge" style="display:none">0</span>
+        </a>        <a class="nav-item disabled">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="nav-label">Slack</span>
           <span class="nav-badge-muted">soon</span>
@@ -745,8 +845,10 @@ function getIndexHtml(): string {
       realEmails: null,
       emailsLoading: false,
       emailsError: null,
-      filterTypes: {},
-    };
+      realEvents: null,
+      eventsLoading: false,
+      eventsError: null,
+      filterTypes: {},    };
     let _saveTimer = null;
 
     // Sidebar nav switching
@@ -777,7 +879,7 @@ function getIndexHtml(): string {
       if (gm && gm.connected && !state.realEmails && !state.emailsLoading) {
         state.emailsLoading = true;
         state.emailsError = null;
-        fetch('/api/gmail/preview?limit=20')
+        fetch('/api/gmail/preview?limit=20&t=' + Date.now())
           .then(function(r) { return r.json(); })
           .then(function(data) {
             state.emailsLoading = false;
@@ -796,6 +898,29 @@ function getIndexHtml(): string {
           });
       }
 
+      // Fetch real calendar events if Google Calendar is connected
+      const cal = state.sources.find(s => s.name === 'google_calendar');
+      if (cal && cal.connected && !state.realEvents && !state.eventsLoading) {
+        state.eventsLoading = true;
+        state.eventsError = null;
+        fetch('/api/calendar/preview?limit=20&t=' + Date.now())
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            state.eventsLoading = false;
+            if (data.ok && data.events) {
+              state.realEvents = data.events;
+              state.eventsError = null;
+            } else {
+              state.eventsError = data.error || 'Failed to load events';
+            }
+            render();
+          })
+          .catch(function(err) {
+            state.eventsLoading = false;
+            state.eventsError = err.message || 'Network error';
+            render();
+          });
+      }
       render();
     }
 
@@ -809,6 +934,7 @@ function getIndexHtml(): string {
         case 'overview': content.innerHTML = renderOverviewTab(); break;
         case 'gmail': content.innerHTML = renderGmailTab(); break;
         case 'github': content.innerHTML = renderGitHubTab(); break;
+        case 'google_calendar': content.innerHTML = renderCalendarTab(); break;
         case 'settings': content.innerHTML = renderSettingsTab(); break;
       }
       // Update sidebar badges and status dots
@@ -818,11 +944,23 @@ function getIndexHtml(): string {
         if (gmailPendingCount) { gmailBadge.textContent = gmailPendingCount; gmailBadge.style.display = ''; }
         else { gmailBadge.style.display = 'none'; }
       }
+      var calPendingCount = state.staging.filter(function(a) { return a.source === 'google_calendar' && a.status === 'pending'; }).length;
+      var calBadge = document.getElementById('calendar-badge');
+      if (calBadge) {
+        if (calPendingCount) { calBadge.textContent = calPendingCount; calBadge.style.display = ''; }
+        else { calBadge.style.display = 'none'; }
+      }
       // Gmail status dot
       var gmailSource = state.sources.find(function(s) { return s.name === 'gmail'; });
       var gmailDot = document.getElementById('gmail-dot');
       if (gmailDot) {
         gmailDot.className = 'status-dot ' + (gmailSource && gmailSource.connected ? 'status-dot-connected' : 'status-dot-disconnected');
+      }
+      // Calendar status dot
+      var calSource = state.sources.find(function(s) { return s.name === 'google_calendar'; });
+      var calDot = document.getElementById('calendar-dot');
+      if (calDot) {
+        calDot.className = 'status-dot ' + (calSource && calSource.connected ? 'status-dot-connected' : 'status-dot-disconnected');
       }
       // GitHub status dot
       var ghSource = state.sources.find(function(s) { return s.name === 'github'; });
@@ -842,12 +980,17 @@ function getIndexHtml(): string {
     function renderOverviewTab() {
       var gmail = state.sources.find(function(s) { return s.name === 'gmail'; });
       var github = state.sources.find(function(s) { return s.name === 'github'; });
+      var cal = state.sources.find(function(s) { return s.name === 'google_calendar'; });
       var gmailConnected = gmail && gmail.connected;
       var ghConnected = github && github.connected;
+      var calConnected = cal && cal.connected;
       var gmailAccount = gmail && gmail.accountInfo;
       var ghAccount = github && github.accountInfo;
+      var calAccount = cal && cal.accountInfo;
       var gmailFilters = (state.filters || []).filter(function(f) { return f.source === 'gmail'; });
       var activeFilterCount = gmailFilters.filter(function(f) { return f.enabled; }).length;
+      var calFilters = (state.filters || []).filter(function(f) { return f.source === 'google_calendar'; });
+      var activeCalFilterCount = calFilters.filter(function(f) { return f.enabled; }).length;
       var enabledRepos = (state.github.repoList || []).filter(function(r) { return r.enabled; }).length;
       var totalRepos = (state.github.repoList || []).length;
       var pendingCount = state.staging.filter(function(a) { return a.status === 'pending'; }).length;
@@ -896,15 +1039,34 @@ function getIndexHtml(): string {
             <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
           </div>
 
-          <div class="card" style="opacity:0.6">
+          <div class="card" style="cursor:pointer" onclick="switchTab('google_calendar')">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span style="font-weight:600;font-size:14px">Calendar</span>
+              </div>
+              <span class="status-dot \${calConnected ? 'status-dot-connected' : 'status-dot-disconnected'}"></span>
+            </div>
+            \${calConnected && calAccount && calAccount.email ? '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + calAccount.email + '</p>' : '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">Not connected</p>'}
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:14px;color:var(--muted)">Filters: <strong class="font-mono" style="color:var(--fg)">\${activeCalFilterCount} active</strong></span>
+            </div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
+          </div>
+
+          <div class="card" style="cursor:pointer" onclick="switchTab('github')">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
               <div style="display:flex;align-items:center;gap:8px">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
                 <span style="font-weight:600;font-size:14px">GitHub</span>
               </div>
-              <span class="nav-badge-muted" style="font-size:12px">soon</span>
+              <span class="status-dot \${ghConnected ? 'status-dot-connected' : 'status-dot-disconnected'}"></span>
             </div>
-            <p style="font-size:14px;color:var(--muted);margin-bottom:8px">Coming soon</p>
+            \${ghConnected && ghAccount && ghAccount.login ? '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">@' + ghAccount.login + '</p>' : '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">Not connected</p>'}
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:14px;color:var(--muted)">Repos: <strong class="font-mono" style="color:var(--fg)">\${enabledRepos} selected</strong></span>
+            </div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
           </div>
 
           <div class="card" style="cursor:pointer" onclick="switchTab('settings')">
@@ -1102,6 +1264,140 @@ function getIndexHtml(): string {
             \${actionHtml}
           </div>
         </div>
+        </div>
+      \`;
+    }
+
+    function renderCalendarTab() {
+      var cal = state.sources.find(function(s) { return s.name === 'google_calendar'; });
+      var realStaging = state.staging.filter(function(a) { return a.source === 'google_calendar'; });
+      var calStaging = realStaging;
+      var pendingCount = calStaging.filter(function(a) { return a.status === 'pending'; }).length;
+
+      var calFilters = (state.filters || []).filter(function(f) { return f.source === 'google_calendar'; });
+
+      var calConnected = cal && cal.connected;
+      var calAccount = cal && cal.accountInfo;
+      var accountEmail = calAccount && calAccount.email ? calAccount.email : '';
+
+      var events = state.realEvents || [];
+      // Sort events by start date descending (most recent at top)
+      var sortedEvents = events.slice().sort(function(a, b) {
+        return new Date(b.start).getTime() - new Date(a.start).getTime();
+      });
+      var visibleEvents = sortedEvents;
+
+      // Disconnected state
+      if (!calConnected) {
+        return '<div style="max-width:480px;margin:60px auto;text-align:center">' +
+          '<h1 style="font-size:24px;font-weight:700;margin-bottom:8px">Calendar</h1>' +
+          '<p style="font-size:14px;color:var(--muted);margin-bottom:4px">Connect your Google Calendar account to control agent access to your events.</p>' +
+          '<p style="font-size:14px;color:var(--muted);margin-bottom:24px;opacity:0.7">Powered by OAuth &mdash; we never store your password.</p>' +
+          '<button class="btn btn-primary" onclick="startOAuth(\\'google_calendar\\')" style="gap:8px">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+            'Connect Calendar</button></div>';
+      }
+
+      // Build event list
+      var eventListHtml = '';
+      visibleEvents.forEach(function(ev) {
+        var safe = ev.id.replace(/'/g, "\\\\'");
+        var dt = new Date(ev.start);
+        var timeStr = dt.toLocaleDateString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+
+        eventListHtml += '<div class="email-row" style="padding:12px 16px">';
+        eventListHtml += '<div style="display:flex;gap:12px;width:100%">';
+        eventListHtml += '<div class="email-row-vis email-row-vis-on"></div>';
+        eventListHtml += '<div style="flex:1;min-width:0">';
+        eventListHtml += '<div style="display:flex;align-items:center;gap:8px">';
+        eventListHtml += '<span class="email-row-sender">' + escapeHtml(ev.title) + '</span>';
+        eventListHtml += '<span class="email-row-date" style="margin-left:auto">' + timeStr + '</span>';
+        eventListHtml += '</div>';
+        if (ev.location) eventListHtml += '<div style="font-size:12px;color:var(--muted);margin-top:2px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>' + escapeHtml(ev.location) + '</div>';
+        if (ev.body) eventListHtml += '<div class="email-row-snippet" style="margin-top:4px">' + escapeHtml(ev.body) + '</div>';
+        eventListHtml += '</div>';
+        eventListHtml += '</div>';
+        eventListHtml += '</div>';
+      });
+
+      // Build action cards
+      var actionHtml = '';
+      calStaging.forEach(function(a) {
+        var data = typeof a.action_data === 'string' ? JSON.parse(a.action_data) : a.action_data;
+        var isPending = a.status === 'pending';
+        var safe = a.action_id.replace(/'/g, "\\\\'");
+        var borderClass = isPending ? 'border-left:3px solid var(--warning)' : a.status === 'approved' ? 'border-left:3px solid var(--success);opacity:0.6' : 'border-left:3px solid var(--destructive);opacity:0.6';
+        var statusClass = isPending ? 'pending' : a.status === 'approved' ? 'connected' : 'rejected';
+        var typeLabel = a.action_type.replace('_event', '');
+        var time = new Date(a.proposed_at || a.createdAt);
+        var timeStr = time.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+
+        actionHtml += '<div class="card" style="padding:16px;' + borderClass + '">';
+        actionHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+        actionHtml += '<div style="display:flex;align-items:center;gap:6px">';
+        actionHtml += '<span class="status ' + statusClass + '" style="font-size:14px;font-family:JetBrains Mono,monospace;text-transform:uppercase;padding:2px 8px">' + a.status + '</span>';
+        actionHtml += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted);text-transform:uppercase">' + typeLabel + '</span>';
+        actionHtml += '</div>';
+        actionHtml += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted)">' + timeStr + '</span>';
+        actionHtml += '</div>';
+        if (a.purpose) actionHtml += '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + escapeHtml(a.purpose) + '</p>';
+
+        actionHtml += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+        actionHtml += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Event:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.title || '') + '</span></div>';
+        if (data.start) actionHtml += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Start:</span><span class="font-mono" style="color:var(--fg)">' + new Date(data.start).toLocaleString() + '</span></div>';
+        actionHtml += '</div>';
+
+        if (isPending) {
+          actionHtml += '<div style="display:flex;align-items:center;gap:6px;margin-top:12px">';
+          actionHtml += '<button class="btn btn-sm btn-outline" style="color:var(--destructive);border-color:rgba(239,68,68,0.3);gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'reject\\')">Deny</button>';
+          actionHtml += '<button class="btn btn-sm" style="background:var(--success);color:#fff;gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'approve\\')">Approve</button>';
+          actionHtml += '</div>';
+        }
+        actionHtml += '</div>';
+      });
+      if (!actionHtml) actionHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No pending actions.</div>';
+
+      return \`
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div>
+              <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.5px;color:var(--fg)">Calendar</h1>
+              \${accountEmail ? '<p style="font-size:13px;color:var(--muted);margin-top:2px">' + escapeHtml(accountEmail) + '</p>' : ''}
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="color:var(--destructive);border-color:rgba(239,68,68,0.3)" onclick="if(confirm('Disconnect Calendar?')){disconnectSource('google_calendar')}">Disconnect</button>
+        </div>
+
+        <div class="card" style="padding:20px;margin-bottom:16px">
+          <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:14px">Quick Filters</label>
+          \${renderCalendarFilterCards(calFilters)}
+        </div>
+
+        <div class="gmail-grid">
+          <div class="gmail-grid-left">
+            <div class="action-review-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <h2 style="margin:0">Agent Access Preview</h2>
+            </div>
+            <div class="card" style="padding:0;overflow:hidden">
+              <div class="email-list-header">
+                <span class="stat">Showing: <strong>\${visibleEvents.length}</strong> events</span>
+                \${calConnected && !state.eventsLoading ? '<button onclick="refreshCalendarEvents()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:4px;padding:2px 10px;font-size:12px;color:var(--muted);cursor:pointer">Refresh</button>' : ''}
+              </div>
+              \${state.eventsLoading
+                ? '<div style="padding:40px;text-align:center"><p style="color:var(--muted);font-size:14px">Loading events...</p></div>'
+                : (eventListHtml || '<p class="empty" style="padding:40px">No events found.</p>')}
+            </div>
+          </div>
+
+          <div class="gmail-grid-right">
+            <div class="action-review-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <h2 style="margin:0">Agent Action Review</h2>
+              \${pendingCount ? '<span class="nav-badge">' + pendingCount + '</span>' : ''}
+            </div>
+            \${actionHtml}
+          </div>
         </div>
       \`;
     }
@@ -1319,6 +1615,70 @@ function getIndexHtml(): string {
       return html;
     }
 
+    function renderCalendarFilterCards(filters) {
+      var types = state.filterTypes || {};
+      var typeKeys = Object.keys(types).filter(function(k) { return k === 'time_after'; }); // Only time_after for calendar for now
+      if (!typeKeys.length) return '<p class="empty">Loading filter types...</p>';
+
+      var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+      typeKeys.forEach(function(typeKey) {
+        var meta = types[typeKey];
+        var label = meta.label;
+        if (typeKey === 'time_after') label = 'Only events after';
+
+        var existing = filters.find(function(f) { return f.type === typeKey; });
+        var isEnabled = existing ? !!existing.enabled : false;
+        var value = existing ? (existing.value || '') : '';
+        var filterId = existing ? existing.id : '';
+        var safeType = escapeAttr(typeKey);
+        var needsValue = meta.needsValue;
+
+        html += '<div class="card" style="padding:14px;margin:0;border:1px solid ' + (isEnabled ? 'rgba(15,160,129,0.3)' : 'var(--border)') + ';transition:border-color 0.2s">';
+        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:' + (needsValue ? '10px' : '0') + '">';
+        html += '<label style="position:relative;display:inline-block;width:36px;height:20px;margin:0;cursor:pointer;flex-shrink:0">';
+        html += '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' onchange="toggleCalendarFilter(&quot;' + safeType + '&quot;, this.checked, &quot;' + escapeAttr(filterId) + '&quot;)" style="opacity:0;width:0;height:0">';
+        html += '<span style="position:absolute;inset:0;background:' + (isEnabled ? 'var(--primary)' : '#ccc') + ';border-radius:10px;transition:background 0.2s"></span>';
+        html += '<span style="position:absolute;left:' + (isEnabled ? '18px' : '2px') + ';top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>';
+        html += '</label>';
+        html += '<span style="font-size:14px;font-weight:500;color:' + (isEnabled ? 'var(--fg)' : 'var(--muted)') + '">' + escapeHtml(label) + '</span>';
+        html += '</div>';
+        if (needsValue) {
+          html += '<input type="' + (typeKey === 'time_after' ? 'date' : 'text') + '" id="cal-filter-val-' + safeType + '" value="' + escapeAttr(value) + '" placeholder="' + escapeAttr(meta.placeholder) + '" onchange="updateCalendarFilterValue(&quot;' + safeType + '&quot;, this.value, &quot;' + escapeAttr(filterId) + '&quot;)" style="width:100%;font-size:13px;padding:6px 10px">';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    async function toggleCalendarFilter(type, enabled, existingId) {
+      var valEl = document.getElementById('cal-filter-val-' + type);
+      var value = valEl ? valEl.value : '';
+      await fetch('/api/filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: existingId || undefined, source: 'google_calendar', type: type, value: value, enabled: enabled ? 1 : 0 })
+      });
+      state.realEvents = null;
+      await fetchData();
+    }
+
+    async function updateCalendarFilterValue(type, value, existingId) {
+      var filter = (state.filters || []).find(function(f) { return f.type === type && f.source === 'google_calendar'; });
+      await fetch('/api/filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: existingId || undefined, source: 'google_calendar', type: type, value: value, enabled: filter ? filter.enabled : 0 })
+      });
+      if (filter && filter.enabled) {
+        state.realEvents = null;
+        await fetchData();
+      } else {
+        var filtersData = await fetch('/api/filters').then(function(r) { return r.json(); });
+        state.filters = filtersData.filters || [];
+      }
+    }
+
     async function toggleFilter(type, enabled, existingId) {
       var valEl = document.getElementById('filter-val-' + type);
       var value = valEl ? valEl.value : '';
@@ -1486,6 +1846,10 @@ function getIndexHtml(): string {
       if (source === 'gmail') {
         state.realEmails = null;
         state.emailsLoading = false;
+      }
+      if (source === 'google_calendar') {
+        state.realEvents = null;
+        state.eventsLoading = false;
       }
       await fetchData();
     }
@@ -1690,12 +2054,23 @@ function getIndexHtml(): string {
       state.realEmails = null;
       state.emailsError = null;
       state.emailsLoading = false;
+      render(); // Show loading state immediately
+      fetchData();
+    };
+    window.refreshCalendarEvents = function() {
+      state.realEvents = null;
+      state.eventsError = null;
+      state.eventsLoading = false;
+      render(); // Show loading state immediately
       fetchData();
     };
     window.toggleEditAction = toggleEditAction;
     window.toggleFilter = toggleFilter;
     window.updateFilterValue = updateFilterValue;
     window.renderFilterCards = renderFilterCards;
+    window.toggleCalendarFilter = toggleCalendarFilter;
+    window.updateCalendarFilterValue = updateCalendarFilterValue;
+    window.renderCalendarFilterCards = renderCalendarFilterCards;
     window.sendAction = sendAction;
 
     // Handle OAuth redirect results

@@ -97,6 +97,7 @@ describe('Tools', () => {
       expect(tool.description).toContain('staged');
       expect(tool.parameters.required).toContain('source');
       expect(tool.parameters.required).toContain('action_type');
+      expect(tool.parameters.required).toContain('action_data');
       expect(tool.parameters.required).toContain('purpose');
     });
 
@@ -107,25 +108,23 @@ describe('Tools', () => {
       });
 
       const tool = createProposeTool(client);
-      const result = await tool.execute('call_3', {
-        source: 'gmail',
-        action_type: 'draft_email',
+      const action_data = {
         to: 'alice@company.com',
         subject: 'Re: Q4 Report',
         body: 'Looks good!',
         in_reply_to: 'msg_abc',
+      };
+      const result = await tool.execute('call_3', {
+        source: 'gmail',
+        action_type: 'draft_email',
+        action_data,
         purpose: 'Draft reply to Alice',
       });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body.source).toBe('gmail');
       expect(body.action_type).toBe('draft_email');
-      expect(body.action_data).toEqual({
-        to: 'alice@company.com',
-        subject: 'Re: Q4 Report',
-        body: 'Looks good!',
-        in_reply_to: 'msg_abc',
-      });
+      expect(body.action_data).toEqual(action_data);
       expect(body.purpose).toBe('Draft reply to Alice');
 
       const parsed = JSON.parse(result.content[0].text!);
@@ -133,24 +132,29 @@ describe('Tools', () => {
       expect(parsed.status).toBe('pending_review');
     });
 
-    it('omits in_reply_to when not provided', async () => {
+    it('passes action_data through as-is', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ ok: true, actionId: 'act_789', status: 'pending_review' }),
       });
 
       const tool = createProposeTool(client);
+      const calendar_data = {
+        title: 'Project Sync',
+        start: '2026-03-20T10:00:00Z',
+        end: '2026-03-20T11:00:00Z',
+        location: 'Zoom',
+      };
       await tool.execute('call_4', {
-        source: 'gmail',
-        action_type: 'send_email',
-        to: 'bob@co.com',
-        subject: 'Hello',
-        body: 'Hi Bob',
-        purpose: 'Send greeting',
+        source: 'google_calendar',
+        action_type: 'create_event',
+        action_data: calendar_data,
+        purpose: 'Schedule sync',
       });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.action_data.in_reply_to).toBeUndefined();
+      expect(body.source).toBe('google_calendar');
+      expect(body.action_data).toEqual(calendar_data);
     });
   });
 });

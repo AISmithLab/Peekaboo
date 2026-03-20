@@ -40,34 +40,25 @@ export const PROPOSE_TOOL_SCHEMA = {
   properties: {
     source: {
       type: 'string' as const,
-      description: 'The source service for this action (e.g., "gmail")',
+      description: 'The source service for this action (e.g., "gmail", "google_calendar")',
     },
     action_type: {
       type: 'string' as const,
-      description: 'The type of action to propose (e.g., "draft_email", "send_email", "reply_email")',
+      description: 'The type of action to propose (e.g., "draft_email", "reply_email", "send_email", "create_event", "delete_event")',
     },
-    to: {
-      type: 'string' as const,
-      description: 'Recipient email address',
-    },
-    subject: {
-      type: 'string' as const,
-      description: 'Email subject line',
-    },
-    body: {
-      type: 'string' as const,
-      description: 'Email body content',
-    },
-    in_reply_to: {
-      type: 'string' as const,
-      description: 'Message ID to reply to (for reply_email and threaded draft_email). Optional.',
+    action_data: {
+      type: 'object' as const,
+      description:
+        'Source-specific action payload. ' +
+        'For gmail: { to, subject, body, in_reply_to? }. ' +
+        'For google_calendar: { title, start, end, location?, body?, timeZone?, eventId? }.',
     },
     purpose: {
       type: 'string' as const,
       description: 'A clear description of why this action is being proposed. Required for transparency and audit.',
     },
   },
-  required: ['source', 'action_type', 'to', 'subject', 'body', 'purpose'] as const,
+  required: ['source', 'action_type', 'action_data', 'purpose'] as const,
 };
 
 /**
@@ -125,24 +116,11 @@ export function createProposeTool(client: HubClient) {
       'Always provide a clear purpose explaining why this action is being proposed.',
     parameters: PROPOSE_TOOL_SCHEMA,
     async execute(_toolCallId: string, args: Record<string, unknown>) {
-      const source = args.source as string;
-      const action_type = args.action_type as string;
-      const purpose = args.purpose as string;
-
-      const action_data: Record<string, unknown> = {
-        to: args.to,
-        subject: args.subject,
-        body: args.body,
-      };
-      if (args.in_reply_to) {
-        action_data.in_reply_to = args.in_reply_to;
-      }
-
       const result = await client.propose({
-        source,
-        action_type,
-        action_data,
-        purpose,
+        source: args.source as string,
+        action_type: args.action_type as string,
+        action_data: args.action_data as Record<string, unknown>,
+        purpose: args.purpose as string,
       });
 
       return {

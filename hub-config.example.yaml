@@ -10,6 +10,14 @@ sources:
       # clientId: "your-client-id.apps.googleusercontent.com"
       # clientSecret: "your-client-secret"
 
+  google_calendar:
+    enabled: true
+    owner_auth:
+      type: oauth2
+      # Uncomment to use your own OAuth app:
+      # clientId: "your-client-id.apps.googleusercontent.com"
+      # clientSecret: "your-client-secret"
+
   github:
     enabled: true
     owner_auth:

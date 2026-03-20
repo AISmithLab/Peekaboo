@@ -12,6 +12,7 @@ import type { HubConfigParsed } from '../config/schema.js';
 import type { ConnectorRegistry } from './connectors/types.js';
 import { TokenManager } from './auth/token-manager.js';
 import { GmailConnector } from './connectors/gmail/connector.js';
+import { GoogleCalendarConnector } from './connectors/calendar/connector.js';
 import { GitHubConnector } from './connectors/github/connector.js';
 import { createServer, type ServerDeps } from './server.js';
 
@@ -59,6 +60,34 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
       });
     } else {
       connectorRegistry.set('gmail', new GmailConnector({ clientId, clientSecret }));
+    }
+  }
+
+  // Google Calendar connector
+  if (config.sources.google_calendar?.enabled) {
+    const clientId = config.sources.google_calendar.owner_auth.clientId ?? '';
+    const clientSecret = config.sources.google_calendar.owner_auth.clientSecret ?? '';
+
+    const storedToken = await tokenManager.getToken('google_calendar');
+    if (storedToken) {
+      const connector = new GoogleCalendarConnector({
+        clientId,
+        clientSecret,
+        accessToken: storedToken.access_token,
+        refreshToken: storedToken.refresh_token,
+      });
+      connectorRegistry.set('google_calendar', connector);
+
+      connector.getAuth().on('tokens', async (newTokens) => {
+        if (newTokens.access_token) {
+          const expiresAt = newTokens.expiry_date
+            ? new Date(newTokens.expiry_date).toISOString()
+            : undefined;
+          await tokenManager.updateAccessToken('google_calendar', newTokens.access_token, expiresAt);
+        }
+      });
+    } else {
+      connectorRegistry.set('google_calendar', new GoogleCalendarConnector({ clientId, clientSecret }));
     }
   }
 
