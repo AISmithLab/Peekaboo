@@ -105,6 +105,46 @@ Search GitHub pull requests. Data is filtered according to the owner's access co
 - `query` (optional) — Search query for pull requests
 - `limit` (optional) — Maximum number of results
 
+### list_drive_files
+*(Google Drive — requires connected Google Drive OAuth)*
+
+List files from Google Drive. Data is filtered according to the owner's access control policy.
+
+**Parameters:**
+- `purpose` (required) — Why this data is needed (logged for audit)
+- `query` (optional) — Search query for file names or descriptions
+- `limit` (optional) — Maximum number of results
+
+### get_drive_file_content
+*(Google Drive — requires connected Google Drive OAuth)*
+
+Get the text content of a file from Google Drive.
+
+**Parameters:**
+- `fileId` (required) — The ID of the file to retrieve
+- `purpose` (required) — Why this data is needed (logged for audit)
+
+### create_drive_file
+*(Google Drive — requires connected Google Drive OAuth)*
+
+Propose creating a new file on Google Drive. The action is staged for the data owner to review — it does NOT execute until approved.
+
+**Parameters:**
+- `name` (required) — File name
+- `description` (optional) — File description
+- `mimeType` (optional) — MIME type (defaults to text/plain)
+- `content` (optional) — File content
+- `purpose` (required) — Why this action is being proposed (logged for audit)
+
+### delete_drive_file
+*(Google Drive — requires connected Google Drive OAuth)*
+
+Propose deleting a file from Google Drive. The action is staged for the data owner to review — it does NOT execute until approved.
+
+**Parameters:**
+- `fileId` (required) — The ID of the file to delete
+- `purpose` (required) — Why this action is being proposed (logged for audit)
+
 ## Direct API Fallback
 
 If the MCP tools above are not available, you can call the PersonalDataHub API directly via HTTP.

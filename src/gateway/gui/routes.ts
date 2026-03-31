@@ -8,6 +8,7 @@ import { google } from 'googleapis';
 import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';
 import { GoogleCalendarConnector } from '../connectors/calendar/connector.js';
+import { GoogleDriveConnector } from '../connectors/google_drive/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
 import { Octokit } from 'octokit';
 import { FILTER_TYPES, applyFilters, type QuickFilter } from '../filters.js';
@@ -96,6 +97,21 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
           const info = { email: profile.data.id ?? undefined };
           await deps.tokenManager.updateAccountInfo('google_calendar', info);
           calSource.accountInfo = info;
+        } catch (_) { /* non-fatal */ }
+      }
+    }
+
+    // Backfill Google Drive account info if empty
+    const driveSource = sources.find((s) => s.name === 'google_drive' && s.connected);
+    if (driveSource && (!driveSource.accountInfo || !driveSource.accountInfo.email)) {
+      const connector = deps.connectorRegistry.get('google_drive');
+      if (connector && connector instanceof GoogleDriveConnector) {
+        try {
+          const driveApi = google.drive({ version: 'v3', auth: connector.getAuth() });
+          const about = await driveApi.about.get({ fields: 'user(emailAddress)' });
+          const info = { email: about.data.user?.emailAddress ?? undefined };
+          await deps.tokenManager.updateAccountInfo('google_drive', info);
+          driveSource.accountInfo = info;
         } catch (_) { /* non-fatal */ }
       }
     }
@@ -382,6 +398,48 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
       return c.json({
         ok: true,
         events: filtered.map(mapRow),
+        totalFetched: rows.length,
+        afterFilters: filtered.length,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.json({ ok: false, error: message }, 500);
+    }
+  });
+
+  // Preview Google Drive files
+  app.get('/api/google_drive/preview', async (c) => {
+    const connector = deps.connectorRegistry.get('google_drive');
+    if (!connector || !(connector instanceof GoogleDriveConnector)) {
+      return c.json({ ok: false, error: 'Drive not connected' }, 401);
+    }
+
+    try {
+      const driveConfig = deps.config.sources.google_drive;
+      const boundary = driveConfig?.boundary ?? {};
+      const limit = parseInt(c.req.query('limit') ?? '20', 10);
+      const rows = await connector.fetch(boundary, { limit });
+
+      const filters = await deps.store.getEnabledFiltersBySource('google_drive') as QuickFilter[];
+      const filtered = applyFilters(rows, filters);
+
+      const mapRow = (row: import('../connectors/types.js').DataRow) => {
+        const d = row.data as Record<string, unknown>;
+        return {
+          id: row.source_item_id,
+          name: d.name || '',
+          title: d.title || '',
+          description: d.description || '',
+          mimeType: d.mimeType || '',
+          url: d.url || '',
+          modifiedTime: d.modifiedTime || '',
+          size: d.size || '',
+        };
+      };
+
+      return c.json({
+        ok: true,
+        files: filtered.map(mapRow),
         totalFetched: rows.length,
         afterFilters: filtered.length,
       });
@@ -796,6 +854,12 @@ function getIndexHtml(): string {
           <span class="nav-label">Calendar</span>
           <span class="status-dot status-dot-disconnected" id="calendar-dot"></span>
           <span class="nav-badge" id="calendar-badge" style="display:none">0</span>
+        </a>
+        <a class="nav-item" data-tab="google_drive" onclick="switchTab('google_drive')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19L12 3 2 19h20zM12 17L5 17 12 5l7 12-7 0z"/></svg>
+          <span class="nav-label">Drive</span>
+          <span class="status-dot status-dot-disconnected" id="drive-dot"></span>
+          <span class="nav-badge" id="drive-badge" style="display:none">0</span>
         </a>        <a class="nav-item disabled">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="nav-label">Slack</span>
@@ -848,6 +912,9 @@ function getIndexHtml(): string {
       realEvents: null,
       eventsLoading: false,
       eventsError: null,
+      realFiles: null,
+      filesLoading: false,
+      filesError: null,
       filterTypes: {},    };
     let _saveTimer = null;
 
@@ -862,6 +929,7 @@ function getIndexHtml(): string {
     window.switchTab = switchTab;
 
     async function fetchData() {
+      // Basic state info
       const [sources, filtersData, staging, audit] = await Promise.all([
         fetch('/api/sources').then(r => r.json()),
         fetch('/api/filters').then(r => r.json()),
@@ -874,50 +942,73 @@ function getIndexHtml(): string {
       state.staging = staging.actions || [];
       state.audit = audit.entries || [];
 
-      // Fetch real emails if Gmail is connected (uses preview with filters)
+      // Fetch source-specific data only if connected and not already loading/loaded
+      
+      // Gmail
       const gm = state.sources.find(s => s.name === 'gmail');
       if (gm && gm.connected && !state.realEmails && !state.emailsLoading) {
         state.emailsLoading = true;
-        state.emailsError = null;
+        render();
         fetch('/api/gmail/preview?limit=20&t=' + Date.now())
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
+          .then(r => r.json())
+          .then(data => {
             state.emailsLoading = false;
             if (data.ok && data.emails) {
               state.realEmails = data.emails;
-              state.emailsError = null;
             } else {
               state.emailsError = data.error || 'Failed to load emails';
             }
             render();
           })
-          .catch(function(err) {
+          .catch(err => {
             state.emailsLoading = false;
             state.emailsError = err.message || 'Network error';
             render();
           });
       }
 
-      // Fetch real calendar events if Google Calendar is connected
+      // Calendar
       const cal = state.sources.find(s => s.name === 'google_calendar');
       if (cal && cal.connected && !state.realEvents && !state.eventsLoading) {
         state.eventsLoading = true;
-        state.eventsError = null;
+        render();
         fetch('/api/calendar/preview?limit=20&t=' + Date.now())
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
+          .then(r => r.json())
+          .then(data => {
             state.eventsLoading = false;
             if (data.ok && data.events) {
               state.realEvents = data.events;
-              state.eventsError = null;
             } else {
               state.eventsError = data.error || 'Failed to load events';
             }
             render();
           })
-          .catch(function(err) {
+          .catch(err => {
             state.eventsLoading = false;
             state.eventsError = err.message || 'Network error';
+            render();
+          });
+      }
+
+      // Drive
+      const drive = state.sources.find(s => s.name === 'google_drive');
+      if (drive && drive.connected && !state.realFiles && !state.filesLoading) {
+        state.filesLoading = true;
+        render();
+        fetch('/api/google_drive/preview?limit=20&t=' + Date.now())
+          .then(r => r.json())
+          .then(data => {
+            state.filesLoading = false;
+            if (data.ok && data.files) {
+              state.realFiles = data.files;
+            } else {
+              state.filesError = data.error || 'Failed to load files';
+            }
+            render();
+          })
+          .catch(err => {
+            state.filesLoading = false;
+            state.filesError = err.message || 'Network error';
             render();
           });
       }
@@ -935,6 +1026,7 @@ function getIndexHtml(): string {
         case 'gmail': content.innerHTML = renderGmailTab(); break;
         case 'github': content.innerHTML = renderGitHubTab(); break;
         case 'google_calendar': content.innerHTML = renderCalendarTab(); break;
+        case 'google_drive': content.innerHTML = renderDriveTab(); break;
         case 'settings': content.innerHTML = renderSettingsTab(); break;
       }
       // Update sidebar badges and status dots
@@ -950,6 +1042,12 @@ function getIndexHtml(): string {
         if (calPendingCount) { calBadge.textContent = calPendingCount; calBadge.style.display = ''; }
         else { calBadge.style.display = 'none'; }
       }
+      var drivePendingCount = state.staging.filter(function(a) { return a.source === 'google_drive' && a.status === 'pending'; }).length;
+      var driveBadge = document.getElementById('drive-badge');
+      if (driveBadge) {
+        if (drivePendingCount) { driveBadge.textContent = drivePendingCount; driveBadge.style.display = ''; }
+        else { driveBadge.style.display = 'none'; }
+      }
       // Gmail status dot
       var gmailSource = state.sources.find(function(s) { return s.name === 'gmail'; });
       var gmailDot = document.getElementById('gmail-dot');
@@ -961,6 +1059,12 @@ function getIndexHtml(): string {
       var calDot = document.getElementById('calendar-dot');
       if (calDot) {
         calDot.className = 'status-dot ' + (calSource && calSource.connected ? 'status-dot-connected' : 'status-dot-disconnected');
+      }
+      // Drive status dot
+      var driveSource = state.sources.find(function(s) { return s.name === 'google_drive'; });
+      var driveDot = document.getElementById('drive-dot');
+      if (driveDot) {
+        driveDot.className = 'status-dot ' + (driveSource && driveSource.connected ? 'status-dot-connected' : 'status-dot-disconnected');
       }
       // GitHub status dot
       var ghSource = state.sources.find(function(s) { return s.name === 'github'; });
@@ -981,16 +1085,21 @@ function getIndexHtml(): string {
       var gmail = state.sources.find(function(s) { return s.name === 'gmail'; });
       var github = state.sources.find(function(s) { return s.name === 'github'; });
       var cal = state.sources.find(function(s) { return s.name === 'google_calendar'; });
+      var drive = state.sources.find(function(s) { return s.name === 'google_drive'; });
       var gmailConnected = gmail && gmail.connected;
       var ghConnected = github && github.connected;
       var calConnected = cal && cal.connected;
+      var driveConnected = drive && drive.connected;
       var gmailAccount = gmail && gmail.accountInfo;
       var ghAccount = github && github.accountInfo;
       var calAccount = cal && cal.accountInfo;
+      var driveAccount = drive && drive.accountInfo;
       var gmailFilters = (state.filters || []).filter(function(f) { return f.source === 'gmail'; });
       var activeFilterCount = gmailFilters.filter(function(f) { return f.enabled; }).length;
       var calFilters = (state.filters || []).filter(function(f) { return f.source === 'google_calendar'; });
       var activeCalFilterCount = calFilters.filter(function(f) { return f.enabled; }).length;
+      var driveFilters = (state.filters || []).filter(function(f) { return f.source === 'google_drive'; });
+      var activeDriveFilterCount = driveFilters.filter(function(f) { return f.enabled; }).length;
       var enabledRepos = (state.github.repoList || []).filter(function(r) { return r.enabled; }).length;
       var totalRepos = (state.github.repoList || []).length;
       var pendingCount = state.staging.filter(function(a) { return a.status === 'pending'; }).length;
@@ -1050,6 +1159,21 @@ function getIndexHtml(): string {
             \${calConnected && calAccount && calAccount.email ? '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + calAccount.email + '</p>' : '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">Not connected</p>'}
             <div style="display:flex;align-items:center;justify-content:space-between">
               <span style="font-size:14px;color:var(--muted)">Filters: <strong class="font-mono" style="color:var(--fg)">\${activeCalFilterCount} active</strong></span>
+            </div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
+          </div>
+
+          <div class="card" style="cursor:pointer" onclick="switchTab('google_drive')">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19L12 3 2 19h20zM12 17L5 17 12 5l7 12-7 0z"/></svg>
+                <span style="font-weight:600;font-size:14px">Drive</span>
+              </div>
+              <span class="status-dot \${driveConnected ? 'status-dot-connected' : 'status-dot-disconnected'}"></span>
+            </div>
+            \${driveConnected && driveAccount && driveAccount.email ? '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + driveAccount.email + '</p>' : '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">Not connected</p>'}
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:14px;color:var(--muted)">Filters: <strong class="font-mono" style="color:var(--fg)">\${activeDriveFilterCount} active</strong></span>
             </div>
             <div style="margin-top:12px;display:flex;align-items:center;gap:4px;font-size:14px;color:var(--primary);font-weight:500">Configure <span style="font-size:14px">&rarr;</span></div>
           </div>
@@ -1323,40 +1447,9 @@ function getIndexHtml(): string {
       // Build action cards
       var actionHtml = '';
       calStaging.forEach(function(a) {
-        var data = typeof a.action_data === 'string' ? JSON.parse(a.action_data) : a.action_data;
-        var isPending = a.status === 'pending';
-        var safe = a.action_id.replace(/'/g, "\\\\'");
-        var borderClass = isPending ? 'border-left:3px solid var(--warning)' : a.status === 'approved' ? 'border-left:3px solid var(--success);opacity:0.6' : 'border-left:3px solid var(--destructive);opacity:0.6';
-        var statusClass = isPending ? 'pending' : a.status === 'approved' ? 'connected' : 'rejected';
-        var typeLabel = a.action_type.replace('_event', '');
-        var time = new Date(a.proposed_at || a.createdAt);
-        var timeStr = time.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-
-        actionHtml += '<div class="card" style="padding:16px;' + borderClass + '">';
-        actionHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-        actionHtml += '<div style="display:flex;align-items:center;gap:6px">';
-        actionHtml += '<span class="status ' + statusClass + '" style="font-size:14px;font-family:JetBrains Mono,monospace;text-transform:uppercase;padding:2px 8px">' + a.status + '</span>';
-        actionHtml += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted);text-transform:uppercase">' + typeLabel + '</span>';
-        actionHtml += '</div>';
-        actionHtml += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted)">' + timeStr + '</span>';
-        actionHtml += '</div>';
-        if (a.purpose) actionHtml += '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + escapeHtml(a.purpose) + '</p>';
-
-        actionHtml += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
-        actionHtml += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Event:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.title || '') + '</span></div>';
-        if (data.start) actionHtml += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Start:</span><span class="font-mono" style="color:var(--fg)">' + new Date(data.start).toLocaleString() + '</span></div>';
-        actionHtml += '</div>';
-
-        if (isPending) {
-          actionHtml += '<div style="display:flex;align-items:center;gap:6px;margin-top:12px">';
-          actionHtml += '<button class="btn btn-sm btn-outline" style="color:var(--destructive);border-color:rgba(239,68,68,0.3);gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'reject\\')">Deny</button>';
-          actionHtml += '<button class="btn btn-sm" style="background:var(--success);color:#fff;gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'approve\\')">Approve</button>';
-          actionHtml += '</div>';
-        }
-        actionHtml += '</div>';
+        actionHtml += renderStagingAction(a);
       });
       if (!actionHtml) actionHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No pending actions.</div>';
-
       return \`
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
           <div style="display:flex;align-items:center;gap:16px">
@@ -1549,6 +1642,114 @@ function getIndexHtml(): string {
       \`;
     }
 
+    function renderDriveTab() {
+      var drive = state.sources.find(function(s) { return s.name === 'google_drive'; });
+      var realStaging = state.staging.filter(function(a) { return a.source === 'google_drive'; });
+      var driveStaging = realStaging;
+      var pendingCount = driveStaging.filter(function(a) { return a.status === 'pending'; }).length;
+
+      var driveFilters = (state.filters || []).filter(function(f) { return f.source === 'google_drive'; });
+
+      var driveConnected = drive && drive.connected;
+      var driveAccount = drive && drive.accountInfo;
+      var accountEmail = driveAccount && driveAccount.email ? driveAccount.email : '';
+
+      var files = state.realFiles || [];
+      // Sort files by modified time descending
+      var sortedFiles = files.slice().sort(function(a, b) {
+        return new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime();
+      });
+      var visibleFiles = sortedFiles;
+
+      // Disconnected state
+      if (!driveConnected) {
+        return '<div style="max-width:480px;margin:60px auto;text-align:center">' +
+          '<h1 style="font-size:24px;font-weight:700;margin-bottom:8px">Google Drive</h1>' +
+          '<p style="font-size:14px;color:var(--muted);margin-bottom:4px">Connect your Google Drive account to control agent access to your files.</p>' +
+          '<p style="font-size:14px;color:var(--muted);margin-bottom:24px;opacity:0.7">Powered by OAuth &mdash; we never store your password.</p>' +
+          '<button class="btn btn-primary" onclick="startOAuth(\\'google_drive\\')" style="gap:8px">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19L12 3 2 19h20zM12 17L5 17 12 5l7 12-7 0z"/></svg>' +
+          'Connect Drive</button></div>';
+      }
+
+      // Build file list
+      var fileListHtml = '';
+      visibleFiles.forEach(function(f) {
+        var dt = new Date(f.modifiedTime);
+        var timeStr = dt.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' });
+
+        fileListHtml += '<div class="email-row" style="padding:12px 16px">';
+        fileListHtml += '<div style="display:flex;gap:12px;width:100%">';
+        fileListHtml += '<div class="email-row-vis email-row-vis-on"></div>';
+        fileListHtml += '<div style="flex:1;min-width:0">';
+        fileListHtml += '<div style="display:flex;align-items:center;gap:8px">';
+        fileListHtml += '<span class="email-row-sender">' + escapeHtml(f.title) + '</span>';
+        fileListHtml += '<span class="email-row-date" style="margin-left:auto">' + timeStr + '</span>';
+        fileListHtml += '</div>';
+        fileListHtml += '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + escapeHtml(f.mimeType) + '</div>';
+        if (f.description) fileListHtml += '<div class="email-row-snippet" style="margin-top:4px">' + escapeHtml(f.description) + '</div>';
+        fileListHtml += '</div>';
+        fileListHtml += '</div>';
+        fileListHtml += '</div>';
+      });
+
+      // Build action list
+      var actionHtml = '';
+      if (driveStaging.length) {
+        driveStaging.forEach(function(a) {
+          actionHtml += renderStagingAction(a);
+        });
+      } else {
+        actionHtml = '<p class="empty" style="padding:20px">No pending actions for Google Drive.</p>';
+      }
+
+      return \`
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div>
+              <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.5px;color:var(--fg)">Google Drive</h1>
+              \${accountEmail ? '<p style="font-size:13px;color:var(--muted);margin-top:2px">' + escapeHtml(accountEmail) + '</p>' : ''}
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="color:var(--destructive);border-color:rgba(239,68,68,0.3)" onclick="if(confirm('Disconnect Google Drive?')){disconnectSource('google_drive')}">Disconnect</button>
+        </div>
+
+        <div class="card" style="padding:20px;margin-bottom:16px">
+          <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:14px">Quick Filters</label>
+          \${renderDriveFilterCards(driveFilters)}
+        </div>
+
+        <div class="gmail-grid">
+          <div class="gmail-grid-left">
+            <div class="action-review-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <h2 style="margin:0">Agent Access Preview</h2>
+            </div>
+            <div class="card" style="padding:0;overflow:hidden">
+              <div class="email-list-header">
+                <span class="stat">Showing: <strong>\${visibleFiles.length}</strong> files</span>
+                \${state.realFiles && driveConnected ? '<button onclick="refreshFiles()" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:4px;padding:2px 10px;font-size:12px;color:var(--muted);cursor:pointer">Refresh</button>' : ''}
+              </div>
+              \${state.filesLoading
+                ? '<div style="padding:40px;text-align:center"><p style="color:var(--muted);font-size:14px">Loading files from Google Drive...</p></div>'
+                : state.filesError
+                  ? '<div style="padding:40px;text-align:center"><p style="color:var(--destructive);font-size:14px">Error: ' + escapeHtml(state.filesError) + '</p><button class="btn btn-primary" onclick="refreshFiles()" style="margin-top:12px">Retry</button></div>'
+                  : (fileListHtml || '<p class="empty" style="padding:40px">No files found.</p>')}
+            </div>
+          </div>
+
+          <div class="gmail-grid-right">
+            <div class="action-review-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <h2 style="margin:0">Agent Action Review</h2>
+              \${pendingCount ? '<span class="nav-badge">' + pendingCount + '</span>' : ''}
+            </div>
+            \${actionHtml}
+          </div>
+        </div>
+      \`;
+    }
+
     function renderSettingsTab() {
       return \`
         <div class="card">
@@ -1572,6 +1773,76 @@ function getIndexHtml(): string {
     function toggleEmailExpand(emailId) {
       state.expandedEmail = state.expandedEmail === emailId ? null : emailId;
       render();
+    }
+
+    function renderStagingAction(a) {
+      var data = typeof a.action_data === 'string' ? JSON.parse(a.action_data) : a.action_data;
+      var isPending = a.status === 'pending';
+      var isReviewing = state.editingAction === a.action_id;
+      var safe = a.action_id.replace(/'/g, "\\\\'");
+      var borderClass = isPending ? 'border-left:3px solid var(--warning)' : a.status === 'approved' ? 'border-left:3px solid var(--success);opacity:0.6' : 'border-left:3px solid var(--destructive);opacity:0.6';
+      var statusClass = isPending ? 'pending' : a.status === 'approved' ? 'connected' : 'rejected';
+      
+      var typeLabel = a.action_type;
+      if (a.source === 'gmail') {
+        typeLabel = a.action_type === 'reply_email' ? 'reply' : a.action_type === 'draft_email' ? 'draft' : a.action_type;
+      } else if (a.source === 'google_calendar') {
+        typeLabel = a.action_type.replace('_event', '');
+      } else if (a.source === 'google_drive') {
+        typeLabel = a.action_type.replace('_file', '');
+      }
+
+      var time = new Date(a.proposed_at || a.createdAt);
+      var timeStr = time.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+
+      var html = '<div class="card" style="padding:16px;' + borderClass + '">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;gap:6px">';
+      html += '<span class="status ' + statusClass + '" style="font-size:14px;font-family:JetBrains Mono,monospace;text-transform:uppercase;padding:2px 8px">' + a.status + '</span>';
+      html += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted);text-transform:uppercase">' + typeLabel + '</span>';
+      html += '</div>';
+      html += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted)">' + timeStr + '</span>';
+      html += '</div>';
+      if (a.purpose) html += '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + escapeHtml(a.purpose) + '</p>';
+
+      html += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+      if (a.source === 'gmail') {
+        html += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">To:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.to || '') + '</span></div>';
+        html += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Subj:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.subject || '') + '</span></div>';
+        if (isReviewing) {
+          html += '<div style="margin-top:8px"><textarea id="edit-body-' + a.action_id + '" style="width:100%;height:120px;font-family:inherit;font-size:14px;padding:8px">' + escapeHtml(data.body || '') + '</textarea></div>';
+        } else {
+          html += '<pre class="font-mono" style="white-space:pre-wrap;background:rgba(0,0,0,0.03);border-radius:6px;padding:8px;font-size:14px;color:var(--fg);max-height:80px;overflow:hidden;margin-top:4px;cursor:pointer;position:relative" onclick="toggleEditAction(\\'' + safe + '\\')">' + escapeHtml(data.body || '') + '<span style="position:absolute;bottom:0;left:0;right:0;height:28px;background:linear-gradient(transparent,#f5f5f5);pointer-events:none"></span></pre>';
+        }
+      } else if (a.source === 'google_calendar') {
+        html += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Event:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.title || '') + '</span></div>';
+        if (data.start) html += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Start:</span><span class="font-mono" style="color:var(--fg)">' + new Date(data.start).toLocaleString() + '</span></div>';
+      } else if (a.source === 'google_drive') {
+        html += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">File:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.name || data.title || '') + '</span></div>';
+        if (data.mimeType) html += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">Type:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.mimeType) + '</span></div>';
+      }
+      html += '</div>';
+
+      if (isPending) {
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-top:12px">';
+        if (a.source === 'gmail') {
+          if (isReviewing) {
+            html += '<button class="btn btn-sm btn-outline" onclick="toggleEditAction(\\'' + safe + '\\')">Cancel</button>';
+            html += '<button class="btn btn-sm btn-primary" onclick="saveAndApprove(\\'' + safe + '\\')">Save & Approve</button>';
+          } else {
+            html += '<button class="btn btn-sm btn-outline" style="gap:4px" onclick="toggleEditAction(\\'' + safe + '\\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Review</button>';
+            html += '<button class="btn btn-sm btn-outline" style="color:var(--destructive);border-color:rgba(239,68,68,0.3);gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'reject\\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Deny</button>';
+            html += '<button class="btn btn-sm" style="background:var(--primary);color:#fff;gap:4px" onclick="approveAction(\\'' + safe + '\\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg> Save to Draft</button>';
+            html += '<button class="btn btn-sm" style="background:var(--success);color:#fff;gap:4px" onclick="sendAction(\\'' + safe + '\\')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send</button>';
+          }
+        } else {
+          html += '<button class="btn btn-sm btn-outline" style="color:var(--destructive);border-color:rgba(239,68,68,0.3);gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'reject\\')">Deny</button>';
+          html += '<button class="btn btn-sm" style="background:var(--success);color:#fff;gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'approve\\')">Approve</button>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+      return html;
     }
 
     function toggleEditAction(actionId) {
@@ -1644,6 +1915,69 @@ function getIndexHtml(): string {
         html += '</div>';
         if (needsValue) {
           html += '<input type="' + (typeKey === 'time_after' ? 'date' : 'text') + '" id="cal-filter-val-' + safeType + '" value="' + escapeAttr(value) + '" placeholder="' + escapeAttr(meta.placeholder) + '" onchange="updateCalendarFilterValue(&quot;' + safeType + '&quot;, this.value, &quot;' + escapeAttr(filterId) + '&quot;)" style="width:100%;font-size:13px;padding:6px 10px">';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    async function toggleDriveFilter(type, enabled, existingId) {
+      var valEl = document.getElementById('filter-val-drive-' + type);
+      var value = valEl ? valEl.value : '';
+      await fetch('/api/filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: existingId || undefined, source: 'google_drive', type: type, value: value, enabled: enabled ? 1 : 0 })
+      });
+      // Refresh files to reflect new filters
+      state.realFiles = null;
+      await fetchData();
+    }
+
+    async function updateDriveFilterValue(type, value, existingId) {
+      // Only save if filter is currently enabled
+      var filter = (state.filters || []).find(function(f) { return f.type === type && f.source === 'google_drive'; });
+      await fetch('/api/filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: existingId || undefined, source: 'google_drive', type: type, value: value, enabled: filter ? filter.enabled : 0 })
+      });
+      if (filter && filter.enabled) {
+        state.realFiles = null;
+        await fetchData();
+      } else {
+        var filtersData = await fetch('/api/filters').then(function(r) { return r.json(); });
+        state.filters = filtersData.filters || [];
+      }
+    }
+
+    function renderDriveFilterCards(filters) {
+      var types = state.filterTypes || {};
+      var typeKeys = Object.keys(types).filter(function(k) { return k === 'time_after'; }); // Only time_after for now
+      if (!typeKeys.length) return '<p class="empty">Loading filter types...</p>';
+
+      var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">';
+      typeKeys.forEach(function(typeKey) {
+        var meta = types[typeKey];
+        var existing = filters.find(function(f) { return f.type === typeKey; });
+        var isEnabled = existing ? !!existing.enabled : false;
+        var value = existing ? (existing.value || '') : '';
+        var filterId = existing ? existing.id : '';
+        var safeType = escapeAttr(typeKey);
+        var needsValue = meta.needsValue;
+
+        html += '<div class="card" style="padding:14px;margin:0;border:1px solid ' + (isEnabled ? 'rgba(15,160,129,0.3)' : 'var(--border)') + ';transition:border-color 0.2s">';
+        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:' + (needsValue ? '10px' : '0') + '">';
+        html += '<label style="position:relative;display:inline-block;width:36px;height:20px;margin:0;cursor:pointer;flex-shrink:0">';
+        html += '<input type="checkbox" ' + (isEnabled ? 'checked' : '') + ' onchange="toggleDriveFilter(&quot;' + safeType + '&quot;, this.checked, &quot;' + escapeAttr(filterId) + '&quot;)" style="opacity:0;width:0;height:0">';
+        html += '<span style="position:absolute;inset:0;background:' + (isEnabled ? 'var(--primary)' : '#ccc') + ';border-radius:10px;transition:background 0.2s"></span>';
+        html += '<span style="position:absolute;left:' + (isEnabled ? '18px' : '2px') + ';top:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></span>';
+        html += '</label>';
+        html += '<span style="font-size:14px;font-weight:500;color:' + (isEnabled ? 'var(--fg)' : 'var(--muted)') + '">' + escapeHtml(meta.label) + '</span>';
+        html += '</div>';
+        if (needsValue) {
+          html += '<input type="date" id="filter-val-drive-' + safeType + '" value="' + escapeAttr(value) + '" onchange="updateDriveFilterValue(&quot;' + safeType + '&quot;, this.value, &quot;' + escapeAttr(filterId) + '&quot;)" style="width:100%;font-size:13px;padding:6px 10px">';
         }
         html += '</div>';
       });
@@ -2064,6 +2398,13 @@ function getIndexHtml(): string {
       render(); // Show loading state immediately
       fetchData();
     };
+    window.refreshFiles = function() {
+      state.realFiles = null;
+      state.filesError = null;
+      state.filesLoading = false;
+      render();
+      fetchData();
+    };
     window.toggleEditAction = toggleEditAction;
     window.toggleFilter = toggleFilter;
     window.updateFilterValue = updateFilterValue;
@@ -2071,8 +2412,10 @@ function getIndexHtml(): string {
     window.toggleCalendarFilter = toggleCalendarFilter;
     window.updateCalendarFilterValue = updateCalendarFilterValue;
     window.renderCalendarFilterCards = renderCalendarFilterCards;
+    window.toggleDriveFilter = toggleDriveFilter;
+    window.updateDriveFilterValue = updateDriveFilterValue;
+    window.renderDriveFilterCards = renderDriveFilterCards;
     window.sendAction = sendAction;
-
     // Handle OAuth redirect results
     (function handleOAuthResult() {
       var params = new URLSearchParams(window.location.search);

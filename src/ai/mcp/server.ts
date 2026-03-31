@@ -201,6 +201,111 @@ function registerGitHubTools(server: McpServer, hubUrl: string): void {
   );
 }
 
+function registerDriveTools(server: McpServer, hubUrl: string): void {
+  server.tool(
+    'list_drive_files',
+    'List files from Google Drive. Data is filtered according to the owner\'s access control policy.',
+    {
+      query: z.string().optional().describe('Search query for file names or descriptions'),
+      limit: z.number().optional().describe('Maximum number of results'),
+      purpose: z.string().describe('Why this data is needed (logged for audit)'),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async ({ query, limit, purpose }) => {
+      const body: Record<string, unknown> = { source: 'google_drive', purpose };
+      if (query) body.query = query;
+      if (limit) body.limit = limit;
+
+      const res = await fetch(`${hubUrl}/app/v1/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const json = await res.json();
+      return { content: [{ type: 'text' as const, text: JSON.stringify(json, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'get_drive_file_content',
+    'Get the text content of a file from Google Drive.',
+    {
+      fileId: z.string().describe('The ID of the file to retrieve'),
+      purpose: z.string().describe('Why this data is needed (logged for audit)'),
+    },
+    { readOnlyHint: true, destructiveHint: false },
+    async ({ fileId, purpose }) => {
+      const res = await fetch(`${hubUrl}/app/v1/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'google_drive',
+          action_type: 'get_file_content',
+          action_data: { fileId },
+          purpose,
+        }),
+      });
+
+      const json = await res.json();
+      return { content: [{ type: 'text' as const, text: JSON.stringify(json, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'create_drive_file',
+    'Propose creating a new file on Google Drive. Staged for owner review.',
+    {
+      name: z.string().describe('File name'),
+      description: z.string().optional().describe('File description'),
+      mimeType: z.string().optional().describe('MIME type (defaults to text/plain)'),
+      content: z.string().optional().describe('File content'),
+      purpose: z.string().describe('Why this action is being proposed (logged for audit)'),
+    },
+    { readOnlyHint: false, destructiveHint: false },
+    async ({ name, description, mimeType, content, purpose }) => {
+      const res = await fetch(`${hubUrl}/app/v1/propose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'google_drive',
+          action_type: 'create_file',
+          action_data: { name, description, mimeType: mimeType || 'text/plain', content },
+          purpose,
+        }),
+      });
+
+      const json = await res.json();
+      return { content: [{ type: 'text' as const, text: JSON.stringify(json, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'delete_drive_file',
+    'Propose deleting a file from Google Drive. Staged for owner review.',
+    {
+      fileId: z.string().describe('The ID of the file to delete'),
+      purpose: z.string().describe('Why this action is being proposed (logged for audit)'),
+    },
+    { readOnlyHint: false, destructiveHint: true },
+    async ({ fileId, purpose }) => {
+      const res = await fetch(`${hubUrl}/app/v1/propose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'google_drive',
+          action_type: 'delete_file',
+          action_data: { fileId },
+          purpose,
+        }),
+      });
+
+      const json = await res.json();
+      return { content: [{ type: 'text' as const, text: JSON.stringify(json, null, 2) }] };
+    },
+  );
+}
+
 function registerCalendarTools(server: McpServer, hubUrl: string): void {
   server.tool(
     'read_calendar_events',
@@ -347,6 +452,16 @@ export async function startMcpServer(): Promise<McpServer> {
       'create_calendar_event',
       'update_calendar_event',
       'delete_calendar_event',
+    );
+  }
+
+  if (sources.google_drive?.connected) {
+    registerDriveTools(server, hubUrl);
+    registeredTools.push(
+      'list_drive_files',
+      'get_drive_file_content',
+      'create_drive_file',
+      'delete_drive_file',
     );
   }
 

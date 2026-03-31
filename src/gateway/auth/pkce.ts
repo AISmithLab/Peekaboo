@@ -60,3 +60,14 @@ export function getCalendarCredentials(config: HubConfigParsed): ResolvedCredent
     clientSecret: calConfig?.owner_auth.clientSecret ?? '',
   };
 }
+
+/**
+ * Returns Google Drive OAuth credentials from config.
+ */
+export function getDriveCredentials(config: HubConfigParsed): ResolvedCredentials {
+  const driveConfig = config.sources.google_drive;
+  return {
+    clientId: driveConfig?.owner_auth.clientId ?? '',
+    clientSecret: driveConfig?.owner_auth.clientSecret ?? '',
+  };
+}

@@ -88,6 +88,38 @@ export function createAppApi(deps: AppApiDeps): Hono {
     return c.json(responsePayload);
   });
 
+  // POST /action — execute an action immediately (limited to read-only actions like get_file_content)
+  app.post('/action', async (c) => {
+    const body = await c.req.json();
+    const { source, action_type, action_data, purpose } = body;
+    const actionPayload = action_data ?? body.params;
+
+    if (!purpose || !source || !action_type) {
+      return c.json({ ok: false, error: { code: 'BAD_REQUEST', message: 'Missing required fields: source, action_type, purpose' } }, 400);
+    }
+
+    const connector = deps.connectorRegistry.get(source);
+    if (!connector) {
+      return c.json({ ok: false, error: { code: 'NOT_FOUND', message: `Unknown source: "${source}"` } }, 404);
+    }
+
+    // Security: Only allow specific read-only actions to execute immediately.
+    // Mutations must go through /propose for owner review.
+    const immediateActions = ['get_file_content'];
+    if (!immediateActions.includes(action_type)) {
+      return c.json({ ok: false, error: { code: 'FORBIDDEN', message: `Action "${action_type}" must be proposed via /propose for owner review.` } }, 403);
+    }
+
+    try {
+      const result = await connector.executeAction(action_type, actionPayload);
+      const actionId = `act_imm_${randomUUID().slice(0, 8)}`;
+      await auditLog.logActionCommitted(actionId, source, result.success ? 'success' : 'failure');
+      return c.json({ ok: true, ...result });
+    } catch (err) {
+      return c.json({ ok: false, error: { code: 'INTERNAL_ERROR', message: String(err) } }, 500);
+    }
+  });
+
   // POST /propose
   app.post('/propose', async (c) => {
     const body = await c.req.json();

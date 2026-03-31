@@ -8,8 +8,9 @@ import type { TokenManager } from './token-manager.js';
 import { AuditLog } from '../audit/log.js';
 import { GmailConnector } from '../connectors/gmail/connector.js';
 import { GoogleCalendarConnector } from '../connectors/calendar/connector.js';
+import { GoogleDriveConnector } from '../connectors/google_drive/connector.js';
 import { GitHubConnector } from '../connectors/github/connector.js';
-import { generateCodeVerifier, computeCodeChallenge, getGmailCredentials, getGitHubCredentials, getCalendarCredentials } from './pkce.js';
+import { generateCodeVerifier, computeCodeChallenge, getGmailCredentials, getGitHubCredentials, getCalendarCredentials, getDriveCredentials } from './pkce.js';
 
 interface OAuthDeps {
   store: DataStore;
@@ -26,6 +27,11 @@ const GMAIL_SCOPES = [
 const CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',
+];
+
+const DRIVE_SCOPES = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
 ];
 
 export function getBaseUrl(config: HubConfigParsed): string {
@@ -290,6 +296,120 @@ export function createOAuthRoutes(deps: OAuthDeps): Hono {
     await deps.tokenManager.deleteToken('google_calendar');
     deps.connectorRegistry.delete('google_calendar');
     await auditLog.insert('oauth_disconnected', 'google_calendar', {});
+    return c.json({ ok: true });
+  });
+
+  // --- Google Drive OAuth ---
+
+  app.get('/google_drive/start', async (c) => {
+    const driveConfig = deps.config.sources.google_drive;
+    if (!driveConfig) {
+      return c.redirect('/?oauth_error=drive_not_configured');
+    }
+
+    const { clientId, clientSecret } = getDriveCredentials(deps.config);
+    if (!clientId || !clientSecret) {
+      return c.redirect('/?oauth_error=drive_missing_credentials');
+    }
+
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = computeCodeChallenge(codeVerifier);
+
+    const state = randomBytes(32).toString('hex');
+    await deps.store.setOAuthState(state, { source: 'google_drive', createdAt: Date.now(), codeVerifier });
+
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      `${getBaseUrl(deps.config)}/oauth/google_drive/callback`,
+    );
+
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: DRIVE_SCOPES,
+      state,
+      code_challenge: codeChallenge,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      code_challenge_method: 'S256' as any,
+    });
+
+    return c.redirect(authUrl);
+  });
+
+  app.get('/google_drive/callback', async (c) => {
+    const code = c.req.query('code');
+    const state = c.req.query('state');
+    const error = c.req.query('error');
+
+    if (error) {
+      return c.redirect(`/?oauth_error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code || !state) {
+      return c.redirect('/?oauth_error=missing_code_or_state');
+    }
+
+    const pending = await deps.store.getAndDeleteOAuthState(state);
+    if (!pending || pending.source !== 'google_drive') {
+      return c.redirect('/?oauth_error=invalid_state');
+    }
+    const { codeVerifier } = pending;
+
+    const { clientId, clientSecret } = getDriveCredentials(deps.config);
+
+    const oauth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      `${getBaseUrl(deps.config)}/oauth/google_drive/callback`,
+    );
+
+    try {
+      const { tokens } = await oauth2Client.getToken({ code, codeVerifier });
+      oauth2Client.setCredentials(tokens);
+
+      const expiresAt = tokens.expiry_date
+        ? new Date(tokens.expiry_date).toISOString()
+        : undefined;
+
+      await deps.tokenManager.storeToken('google_drive', {
+        access_token: tokens.access_token!,
+        refresh_token: tokens.refresh_token ?? undefined,
+        token_type: tokens.token_type ?? 'Bearer',
+        expires_at: expiresAt,
+        scopes: DRIVE_SCOPES.join(' '),
+      });
+
+      const connector = new GoogleDriveConnector({
+        clientId,
+        clientSecret,
+        accessToken: tokens.access_token!,
+        refreshToken: tokens.refresh_token ?? undefined,
+      });
+      deps.connectorRegistry.set('google_drive', connector);
+
+      connector.getAuth().on('tokens', async (newTokens) => {
+        if (newTokens.access_token) {
+          const newExpiry = newTokens.expiry_date
+            ? new Date(newTokens.expiry_date).toISOString()
+            : undefined;
+          await deps.tokenManager.updateAccessToken('google_drive', newTokens.access_token, newExpiry);
+        }
+      });
+
+      await auditLog.insert('oauth_connected', 'google_drive', {});
+
+      return c.redirect('/?oauth_success=google_drive');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      return c.redirect(`/?oauth_error=${encodeURIComponent(message)}`);
+    }
+  });
+
+  app.post('/google_drive/disconnect', async (c) => {
+    await deps.tokenManager.deleteToken('google_drive');
+    deps.connectorRegistry.delete('google_drive');
+    await auditLog.insert('oauth_disconnected', 'google_drive', {});
     return c.json({ ok: true });
   });
 
