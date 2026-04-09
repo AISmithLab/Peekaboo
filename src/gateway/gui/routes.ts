@@ -181,8 +181,11 @@ export function createGuiRoutes(deps: GuiDeps): Hono {
             );
             await deps.store.updateStagingStatus(actionId, 'committed');
             await auditLog.logActionCommitted(actionId, action.source, result.success ? 'success' : 'failure');
-          } catch (_err) {
+            return c.json({ ok: true, status: 'committed', result });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
             await auditLog.logActionCommitted(actionId, action.source, 'failure');
+            return c.json({ ok: false, error: `Execution failed: ${message}` }, 500);
           }
         }
       }
@@ -796,7 +799,14 @@ function getIndexHtml(): string {
           <span class="nav-label">Calendar</span>
           <span class="status-dot status-dot-disconnected" id="calendar-dot"></span>
           <span class="nav-badge" id="calendar-badge" style="display:none">0</span>
-        </a>        <a class="nav-item disabled">
+        </a>
+        <a class="nav-item" data-tab="overleaf" onclick="switchTab('overleaf')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span class="nav-label">Overleaf</span>
+          <span class="status-dot status-dot-disconnected" id="overleaf-dot"></span>
+          <span class="nav-badge" id="overleaf-badge" style="display:none">0</span>
+        </a>
+        <a class="nav-item disabled">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="nav-label">Slack</span>
           <span class="nav-badge-muted">soon</span>
@@ -935,6 +945,7 @@ function getIndexHtml(): string {
         case 'gmail': content.innerHTML = renderGmailTab(); break;
         case 'github': content.innerHTML = renderGitHubTab(); break;
         case 'google_calendar': content.innerHTML = renderCalendarTab(); break;
+        case 'overleaf': content.innerHTML = renderOverleafTab(); break;
         case 'settings': content.innerHTML = renderSettingsTab(); break;
       }
       // Update sidebar badges and status dots
@@ -950,6 +961,12 @@ function getIndexHtml(): string {
         if (calPendingCount) { calBadge.textContent = calPendingCount; calBadge.style.display = ''; }
         else { calBadge.style.display = 'none'; }
       }
+      var overleafPendingCount = state.staging.filter(function(a) { return a.source === 'overleaf' && a.status === 'pending'; }).length;
+      var overleafBadge = document.getElementById('overleaf-badge');
+      if (overleafBadge) {
+        if (overleafPendingCount) { overleafBadge.textContent = overleafPendingCount; overleafBadge.style.display = ''; }
+        else { overleafBadge.style.display = 'none'; }
+      }
       // Gmail status dot
       var gmailSource = state.sources.find(function(s) { return s.name === 'gmail'; });
       var gmailDot = document.getElementById('gmail-dot');
@@ -961,6 +978,12 @@ function getIndexHtml(): string {
       var calDot = document.getElementById('calendar-dot');
       if (calDot) {
         calDot.className = 'status-dot ' + (calSource && calSource.connected ? 'status-dot-connected' : 'status-dot-disconnected');
+      }
+      // Overleaf status dot
+      var overleafSource = state.sources.find(function(s) { return s.name === 'overleaf'; });
+      var overleafDot = document.getElementById('overleaf-dot');
+      if (overleafDot) {
+        overleafDot.className = 'status-dot ' + (overleafSource && overleafSource.enabled ? 'status-dot-connected' : 'status-dot-disconnected');
       }
       // GitHub status dot
       var ghSource = state.sources.find(function(s) { return s.name === 'github'; });
@@ -1398,6 +1421,66 @@ function getIndexHtml(): string {
             </div>
             \${actionHtml}
           </div>
+        </div>
+      \`;
+    }
+
+    function renderOverleafTab() {
+      var overleaf = state.sources.find(function(s) { return s.name === 'overleaf'; });
+      var realStaging = state.staging.filter(function(a) { return a.source === 'overleaf'; });
+      var pendingCount = realStaging.filter(function(a) { return a.status === 'pending'; }).length;
+
+      var actionHtml = '';
+      realStaging.forEach(function(a) {
+        var data = typeof a.action_data === 'string' ? JSON.parse(a.action_data) : a.action_data;
+        var isPending = a.status === 'pending';
+        var safe = a.action_id.replace(/'/g, "\\\\'");
+        var borderClass = isPending ? 'border-left:3px solid var(--warning)' : a.status === 'approved' || a.status === 'committed' ? 'border-left:3px solid var(--success);opacity:0.6' : 'border-left:3px solid var(--destructive);opacity:0.6';
+        var statusClass = isPending ? 'pending' : (a.status === 'approved' || a.status === 'committed') ? 'connected' : 'rejected';
+        var time = new Date(a.proposed_at || a.createdAt);
+        var timeStr = time.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+
+        actionHtml += '<div class="card" style="padding:16px;' + borderClass + '">';
+        actionHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+        actionHtml += '<div style="display:flex;align-items:center;gap:6px">';
+        actionHtml += '<span class="status ' + statusClass + '" style="font-size:14px;font-family:JetBrains Mono,monospace;text-transform:uppercase;padding:2px 8px">' + a.status + '</span>';
+        actionHtml += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted);text-transform:uppercase">CREATE DOCUMENT</span>';
+        actionHtml += '</div>';
+        actionHtml += '<span style="font-size:14px;font-family:JetBrains Mono,monospace;color:var(--muted)">' + timeStr + '</span>';
+        actionHtml += '</div>';
+        if (a.purpose) actionHtml += '<p style="font-size:14px;color:var(--muted);margin-bottom:8px">' + escapeHtml(a.purpose) + '</p>';
+
+        actionHtml += '<div style="font-size:14px;display:flex;flex-direction:column;gap:4px">';
+        actionHtml += '<div style="display:flex;gap:8px"><span style="color:var(--muted);width:48px;flex-shrink:0">File:</span><span class="font-mono" style="color:var(--fg)">' + escapeHtml(data.title || '') + '</span></div>';
+        actionHtml += '<pre class="font-mono" style="white-space:pre-wrap;background:rgba(0,0,0,0.03);border-radius:6px;padding:8px;font-size:13px;color:var(--fg);max-height:200px;overflow:auto;margin-top:4px">' + escapeHtml(data.body || '') + '</pre>';
+        actionHtml += '</div>';
+
+        if (isPending) {
+          actionHtml += '<div style="display:flex;align-items:center;gap:6px;margin-top:12px">';
+          actionHtml += '<button class="btn btn-sm btn-outline" style="color:var(--destructive);border-color:rgba(239,68,68,0.3);gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'reject\\')">Deny</button>';
+          actionHtml += '<button class="btn btn-sm" style="background:var(--success);color:#fff;gap:4px" onclick="resolveAction(\\'' + safe + '\\', \\'approve\\')">Approve & Open in Overleaf</button>';
+          actionHtml += '</div>';
+        }
+        actionHtml += '</div>';
+      });
+
+      if (!actionHtml) actionHtml = '<div class="card" style="padding:24px;text-align:center;color:var(--muted);font-size:14px">No pending document requests.</div>';
+
+      return \`
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px">
+          <div>
+            <h1 style="font-size:24px;font-weight:700;letter-spacing:-0.5px;color:var(--fg)">Overleaf</h1>
+            <p style="font-size:13px;color:var(--muted);margin-top:2px">Compose LaTeX and open projects directly in Overleaf.</p>
+          </div>
+        </div>
+
+        <div style="max-width:800px">
+          <div class="action-review-header">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <h2 style="margin:0">Document Requests</h2>
+            \${pendingCount ? '<span class="nav-badge">' + pendingCount + '</span>' : ''}
+          </div>
+          \${actionHtml}
         </div>
       \`;
     }
@@ -2020,11 +2103,28 @@ function getIndexHtml(): string {
     }
 
     async function resolveAction(actionId, decision) {
-      await fetch('/api/staging/' + actionId + '/resolve', {
+      const res = await fetch('/api/staging/' + actionId + '/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision })
       });
+      const data = await res.json();
+      if (data.ok && data.result && data.result.resultData && data.result.resultData.type === 'overleaf_redirect') {
+        const rd = data.result.resultData;
+        const form = document.createElement('form');
+        form.action = 'https://www.overleaf.com/docs';
+        form.method = 'POST';
+        form.target = '_blank';
+        const snip = document.createElement('input');
+        snip.type = 'hidden'; snip.name = 'snip'; snip.value = rd.snip;
+        form.appendChild(snip);
+        const snipName = document.createElement('input');
+        snipName.type = 'hidden'; snipName.name = 'snip_name'; snipName.value = rd.snip_name;
+        form.appendChild(snipName);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+      }
       await fetchData();
     }
 
