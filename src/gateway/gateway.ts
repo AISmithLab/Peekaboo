@@ -14,6 +14,7 @@ import { TokenManager } from './auth/token-manager.js';
 import { GmailConnector } from './connectors/gmail/connector.js';
 import { GoogleCalendarConnector } from './connectors/calendar/connector.js';
 import { GitHubConnector } from './connectors/github/connector.js';
+import { GoogleDriveConnector } from './connectors/google_drive/connector.js';
 import { createServer, type ServerDeps } from './server.js';
 
 export interface GatewayOptions {
@@ -36,8 +37,8 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
 
   // Gmail connector — restore from stored token or create empty
   if (config.sources.gmail?.enabled) {
-    const clientId = config.sources.gmail.owner_auth.clientId ?? '';
-    const clientSecret = config.sources.gmail.owner_auth.clientSecret ?? '';
+    const clientId = config.sources.gmail.owner_auth?.clientId ?? '';
+    const clientSecret = config.sources.gmail.owner_auth?.clientSecret ?? '';
 
     const storedToken = await tokenManager.getToken('gmail');
     if (storedToken) {
@@ -65,8 +66,8 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
 
   // Google Calendar connector
   if (config.sources.google_calendar?.enabled) {
-    const clientId = config.sources.google_calendar.owner_auth.clientId ?? '';
-    const clientSecret = config.sources.google_calendar.owner_auth.clientSecret ?? '';
+    const clientId = config.sources.google_calendar.owner_auth?.clientId ?? '';
+    const clientSecret = config.sources.google_calendar.owner_auth?.clientSecret ?? '';
 
     const storedToken = await tokenManager.getToken('google_calendar');
     if (storedToken) {
@@ -91,6 +92,34 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
     }
   }
 
+  // Google Drive connector
+  if (config.sources.google_drive?.enabled) {
+    const clientId = config.sources.google_drive.owner_auth?.clientId ?? '';
+    const clientSecret = config.sources.google_drive.owner_auth?.clientSecret ?? '';
+
+    const storedToken = await tokenManager.getToken('google_drive');
+    if (storedToken) {
+      const connector = new GoogleDriveConnector({
+        clientId,
+        clientSecret,
+        accessToken: storedToken.access_token,
+        refreshToken: storedToken.refresh_token,
+      });
+      connectorRegistry.set('google_drive', connector);
+
+      connector.getAuth().on('tokens', async (newTokens) => {
+        if (newTokens.access_token) {
+          const expiresAt = newTokens.expiry_date
+            ? new Date(newTokens.expiry_date).toISOString()
+            : undefined;
+          await tokenManager.updateAccessToken('google_drive', newTokens.access_token, expiresAt);
+        }
+      });
+    } else {
+      connectorRegistry.set('google_drive', new GoogleDriveConnector({ clientId, clientSecret }));
+    }
+  }
+
   // GitHub connector — restore from stored token or create empty
   if (config.sources.github?.enabled) {
     const githubConfig = config.sources.github;
@@ -102,7 +131,7 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
 
     const storedToken = await tokenManager.getToken('github');
     connectorRegistry.set('github', new GitHubConnector({
-      ownerToken: storedToken?.access_token ?? githubConfig.owner_auth.token ?? '',
+      ownerToken: storedToken?.access_token ?? githubConfig.owner_auth?.token ?? '',
       agentUsername,
       allowedRepos,
     }));
