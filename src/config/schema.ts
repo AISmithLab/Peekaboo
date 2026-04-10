@@ -30,7 +30,7 @@ const sourceBoundarySchema = z.object({
 
 const sourceConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  owner_auth: ownerAuthSchema,
+  owner_auth: ownerAuthSchema.optional(),
   agent_identity: agentIdentitySchema.optional(),
   boundary: sourceBoundarySchema.default({}),
 
