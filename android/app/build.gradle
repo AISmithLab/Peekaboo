@@ -1,0 +1,70 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "com.aismithlab.pdh"
+    compileSdk rootProject.ext.compileSdkVersion
+    packagingOptions {
+        // libnode.so (bundled in the capacitor-node-js plugin) is not 16KB-aligned.
+        // Extracting native libs to the filesystem avoids the Android 15 alignment warning
+        // and is also required for Node.js Mobile to dlopen() the library at runtime.
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    defaultConfig {
+        applicationId "com.aismithlab.pdh"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            // Don't compress JS/WASM — they're already dense binary/text and
+            // compressing them during packaging exhausts the Gradle heap.
+            noCompress 'js', 'wasm', 'json'
+        }
+    }
+    buildTypes {
+        debug {
+            // Only build for arm64-v8a during development — cuts libnode.so from
+            // 3 × 60 MB (all ABIs) down to 1 × 60 MB. Remove for release builds.
+            ndk {
+                abiFilters "arm64-v8a"
+            }
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

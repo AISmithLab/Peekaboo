@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PersonalDataHub</string>
+    <string name="title_activity_main">PersonalDataHub</string>
+    <string name="package_name">com.aismithlab.pdh</string>
+    <string name="custom_url_scheme">com.aismithlab.pdh</string>
+</resources>

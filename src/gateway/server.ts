@@ -19,8 +19,12 @@ export interface ServerDeps {
 export function createServer(deps: ServerDeps): Hono {
   const app = new Hono();
 
-  // Health check
-  app.get('/health', (c) => c.json({ ok: true, version: '0.1.0' }));
+  // Health check — CORS wildcard so the Capacitor WebView (origin: http://localhost)
+  // can poll this endpoint from www/index.html before navigating to the server.
+  app.get('/health', (c) => {
+    c.header('Access-Control-Allow-Origin', '*');
+    return c.json({ ok: true, version: '0.1.0' });
+  });
 
   // Mount App API
   const appApi = createAppApi(deps);

@@ -36,8 +36,8 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
 
   // Gmail connector — restore from stored token or create empty
   if (config.sources.gmail?.enabled) {
-    const clientId = config.sources.gmail.owner_auth.clientId ?? '';
-    const clientSecret = config.sources.gmail.owner_auth.clientSecret ?? '';
+    const clientId = config.sources.gmail.owner_auth?.clientId ?? '';
+    const clientSecret = config.sources.gmail.owner_auth?.clientSecret ?? '';
 
     const storedToken = await tokenManager.getToken('gmail');
     if (storedToken) {
@@ -65,8 +65,8 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
 
   // Google Calendar connector
   if (config.sources.google_calendar?.enabled) {
-    const clientId = config.sources.google_calendar.owner_auth.clientId ?? '';
-    const clientSecret = config.sources.google_calendar.owner_auth.clientSecret ?? '';
+    const clientId = config.sources.google_calendar.owner_auth?.clientId ?? '';
+    const clientSecret = config.sources.google_calendar.owner_auth?.clientSecret ?? '';
 
     const storedToken = await tokenManager.getToken('google_calendar');
     if (storedToken) {
@@ -102,7 +102,7 @@ export async function createGateway(opts: GatewayOptions): Promise<GatewayResult
 
     const storedToken = await tokenManager.getToken('github');
     connectorRegistry.set('github', new GitHubConnector({
-      ownerToken: storedToken?.access_token ?? githubConfig.owner_auth.token ?? '',
+      ownerToken: storedToken?.access_token ?? githubConfig.owner_auth?.token ?? '',
       agentUsername,
       allowedRepos,
     }));

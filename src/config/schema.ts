@@ -30,10 +30,9 @@ const sourceBoundarySchema = z.object({
 
 const sourceConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  owner_auth: ownerAuthSchema,
+  owner_auth: ownerAuthSchema.optional(),
   agent_identity: agentIdentitySchema.optional(),
   boundary: sourceBoundarySchema.default({}),
-
 });
 
 const aiProviderSchema = z.object({
@@ -44,7 +43,7 @@ const aiProviderSchema = z.object({
 
 const deploymentSchema = z.object({
   gateway: z.enum(['local', 'serverless']).default('local'),
-  database: z.enum(['sqlite', 'dynamodb']).default('sqlite'),
+  database: z.enum(['sqlite', 'dynamodb', 'sqljs']).default('sqlite'),
   base_url: z.string().optional(),
   dynamodb_table: z.string().optional(),
 });

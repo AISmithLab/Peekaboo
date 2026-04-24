@@ -12,3 +12,8 @@ hub-config.yaml
 .claude/
 coverage/
 *.tsbuildinfo
+www/nodejs/
+android/app/src/main/assets/nodejs-project/
+android/app/src/main/assets/public/nodejs/
+hc.yml
+text

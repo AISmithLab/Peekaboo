@@ -20,15 +20,21 @@ export interface AppResult {
 }
 
 export async function createApp(config: HubConfigParsed): Promise<AppResult> {
-  // Create DataStore based on deployment.database
+  // Create DataStore based on deployment.database (or PDH_MOBILE env var)
   let store: DataStore;
-  if (config.deployment.database === 'dynamodb') {
+  const dbType = config.deployment.database ?? (process.env.PDH_MOBILE === 'true' ? 'sqljs' : 'sqlite');
+
+  if (dbType === 'dynamodb') {
     const tableName = config.deployment.dynamodb_table ?? process.env.DYNAMODB_TABLE;
     if (!tableName) {
       throw new Error('deployment.dynamodb_table (or DYNAMODB_TABLE env var) is required when database is "dynamodb"');
     }
     const { DynamoDataStore } = await import('./database/dynamo-store.js');
     store = new DynamoDataStore(tableName);
+  } else if (dbType === 'sqljs') {
+    const dbPath = process.env.PDH_DB_PATH ?? resolve('pdh.db');
+    const { SqlJsDataStore } = await import('./database/sqljs-store.js');
+    store = await SqlJsDataStore.create(dbPath);
   } else {
     const { getDb } = await import('./database/db.js');
     const { SqliteDataStore } = await import('./database/sqlite-store.js');
