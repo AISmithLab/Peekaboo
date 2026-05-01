@@ -3,6 +3,8 @@
 
     <!-- INTERNET is required for the embedded Node.js server (loopback) -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- READ_SMS is required for the SMS page (runtime permission, requested on first use) -->
+    <uses-permission android:name="android.permission.READ_SMS" />
 
     <application
         android:allowBackup="true"

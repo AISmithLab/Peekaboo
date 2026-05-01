@@ -870,23 +870,33 @@ function getIndexHtml(): string {
   <nav id="bottom-nav">
     <a data-tab="overview" onclick="switchTab('overview')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      Overview
+      <span>Overview</span>
     </a>
     <a data-tab="gmail" onclick="switchTab('gmail')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      Gmail
+      <div style="position:relative;display:inline-flex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <span class="nav-badge" id="bn-gmail-badge" style="display:none;position:absolute;top:-6px;right:-8px;min-width:16px">0</span>
+      </div>
+      <span>Gmail</span>
     </a>
     <a data-tab="google_calendar" onclick="switchTab('google_calendar')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      Calendar
+      <div style="position:relative;display:inline-flex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="nav-badge" id="bn-cal-badge" style="display:none;position:absolute;top:-6px;right:-8px;min-width:16px">0</span>
+      </div>
+      <span>Calendar</span>
     </a>
     <a data-tab="github" onclick="switchTab('github')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-      GitHub
+      <span>GitHub</span>
+    </a>
+    <a data-tab="sms" onclick="switchTab('sms')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.4 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+      <span>SMS</span>
     </a>
     <a data-tab="settings" onclick="switchTab('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Settings
+      <span>Settings</span>
     </a>
   </nav>
 
@@ -921,7 +931,9 @@ function getIndexHtml(): string {
       realEvents: null,
       eventsLoading: false,
       eventsError: null,
-      filterTypes: {},    };
+      filterTypes: {},
+      sms: { messages: null, loading: false, error: null, box: 'inbox' },
+    };
     let _saveTimer = null;
 
     // Sidebar + bottom-nav switching
@@ -1008,6 +1020,7 @@ function getIndexHtml(): string {
         case 'gmail': content.innerHTML = renderGmailTab(); break;
         case 'github': content.innerHTML = renderGitHubTab(); break;
         case 'google_calendar': content.innerHTML = renderCalendarTab(); break;
+        case 'sms': content.innerHTML = renderSmsTab(); loadSmsMessages(); break;
         case 'settings': content.innerHTML = renderSettingsTab(); break;
       }
       // Update sidebar badges and status dots
@@ -1017,11 +1030,21 @@ function getIndexHtml(): string {
         if (gmailPendingCount) { gmailBadge.textContent = gmailPendingCount; gmailBadge.style.display = ''; }
         else { gmailBadge.style.display = 'none'; }
       }
+      var bnGmailBadge = document.getElementById('bn-gmail-badge');
+      if (bnGmailBadge) {
+        if (gmailPendingCount) { bnGmailBadge.textContent = gmailPendingCount; bnGmailBadge.style.display = ''; }
+        else { bnGmailBadge.style.display = 'none'; }
+      }
       var calPendingCount = state.staging.filter(function(a) { return a.source === 'google_calendar' && a.status === 'pending'; }).length;
       var calBadge = document.getElementById('calendar-badge');
       if (calBadge) {
         if (calPendingCount) { calBadge.textContent = calPendingCount; calBadge.style.display = ''; }
         else { calBadge.style.display = 'none'; }
+      }
+      var bnCalBadge = document.getElementById('bn-cal-badge');
+      if (bnCalBadge) {
+        if (calPendingCount) { bnCalBadge.textContent = calPendingCount; bnCalBadge.style.display = ''; }
+        else { bnCalBadge.style.display = 'none'; }
       }
       // Gmail status dot
       var gmailSource = state.sources.find(function(s) { return s.name === 'gmail'; });
@@ -1621,6 +1644,139 @@ function getIndexHtml(): string {
           repoHtml + '</div>' : ''}
       \`;
     }
+
+    function renderSmsTab() {
+      var sms = state.sms;
+      var boxBtnStyle = function(b) {
+        return 'padding:6px 14px;border-radius:6px;border:1px solid;font-size:13px;cursor:pointer;' +
+          (sms.box === b
+            ? 'background:var(--primary);color:#fff;border-color:var(--primary);'
+            : 'background:none;color:var(--muted);border-color:var(--border);');
+      };
+
+      var listHtml = '';
+      if (sms.loading) {
+        listHtml = '<div style="padding:40px;text-align:center"><div class="spinner"></div><p style="margin-top:12px;color:var(--muted);font-size:14px">Loading messages…</p></div>';
+      } else if (sms.error) {
+        if (sms.error === 'PERMISSION_DENIED') {
+          listHtml = '<div style="padding:32px;text-align:center">' +
+            '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="margin-bottom:12px"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.4 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>' +
+            '<p style="font-size:15px;font-weight:600;margin-bottom:6px">SMS Permission Required</p>' +
+            '<p style="font-size:13px;color:var(--muted);margin-bottom:16px">Grant SMS permission in Android Settings to read messages.</p>' +
+            '<button class="btn btn-primary" onclick="loadSmsMessages(true)">Request Permission</button>' +
+            '</div>';
+        } else if (sms.error === 'NOT_ANDROID') {
+          listHtml = '<div style="padding:32px;text-align:center;color:var(--muted);font-size:14px">SMS reading is only available on Android.</div>';
+        } else {
+          listHtml = '<div style="padding:24px"><div class="status disconnected" style="font-size:13px">Error: ' + escapeHtml(sms.error) + '</div>' +
+            '<button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="loadSmsMessages(true)">Retry</button></div>';
+        }
+      } else if (!sms.messages) {
+        listHtml = '<div style="padding:40px;text-align:center"><div class="spinner"></div></div>';
+      } else if (sms.messages.length === 0) {
+        listHtml = '<div style="padding:32px;text-align:center;color:var(--muted);font-size:14px">No messages in ' + sms.box + '.</div>';
+      } else {
+        sms.messages.forEach(function(msg) {
+          var date = new Date(msg.date);
+          var now = new Date();
+          var diffMs = now - date;
+          var diffH = diffMs / 3600000;
+          var dateStr = diffH < 1 ? Math.round(diffMs / 60000) + 'm ago'
+            : diffH < 24 ? Math.round(diffH) + 'h ago'
+            : diffH < 48 ? 'Yesterday'
+            : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          var unread = !msg.read;
+          var body = msg.body || '';
+          var snippet = body.length > 80 ? body.substring(0, 80) + '…' : body;
+          listHtml += '<div class="email-row' + (unread ? '' : '') + '">' +
+            '<div class="email-row-btn" style="display:flex;align-items:flex-start;gap:10px">' +
+            (unread ? '<div style="width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:5px"></div>' : '<div style="width:6px;flex-shrink:0"></div>') +
+            '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+            '<span class="email-row-sender">' + escapeHtml(msg.address || 'Unknown') + '</span>' +
+            '<span class="email-row-date">' + escapeHtml(dateStr) + '</span>' +
+            '</div>' +
+            '<div class="email-row-snippet">' + escapeHtml(snippet) + '</div>' +
+            '</div></div></div>';
+        });
+      }
+
+      return \`
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:10px">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.4 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+              <h2 style="margin:0">SMS Messages</h2>
+              \${sms.messages ? '<span style="font-size:13px;color:var(--muted)">(' + sms.messages.length + ')</span>' : ''}
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="loadSmsMessages(true)">Refresh</button>
+          </div>
+          <div style="display:flex;gap:6px;padding:12px 20px;border-bottom:1px solid var(--border)">
+            <button style="\${boxBtnStyle('inbox')}" onclick="state.sms.box='inbox';loadSmsMessages(true)">Inbox</button>
+            <button style="\${boxBtnStyle('sent')}" onclick="state.sms.box='sent';loadSmsMessages(true)">Sent</button>
+            <button style="\${boxBtnStyle('all')}" onclick="state.sms.box='all';loadSmsMessages(true)">All</button>
+          </div>
+          \${listHtml}
+        </div>
+      \`;
+    }
+
+    function loadSmsMessages(force) {
+      if (!force && state.sms.messages !== null) return;
+      if (state.sms.loading) return;
+
+      state.sms.loading = true;
+      state.sms.error = null;
+      if (currentTab === 'sms') render();
+
+      // The Capacitor plugin bridge is only available on the capacitor://localhost
+      // origin, not on http://127.0.0.1:3000 (this page).  Load a hidden iframe
+      // from the Capacitor origin; it calls SmsPlugin and postMessages the result.
+      var old = document.getElementById('sms-bridge-frame');
+      if (old) old.remove();
+
+      var reqId = Date.now().toString();
+      var iframe = document.createElement('iframe');
+      iframe.id = 'sms-bridge-frame';
+      iframe.style.cssText = 'display:none;position:fixed;width:0;height:0;border:none';
+      iframe.src = 'capacitor://localhost/sms-bridge.html?box=' + encodeURIComponent(state.sms.box) + '&reqId=' + reqId;
+
+      var cleanup = null;
+      var timer = setTimeout(function () {
+        cleanup();
+        state.sms.loading = false;
+        state.sms.error = 'SMS bridge timed out — check SMS permission in Android Settings';
+        if (currentTab === 'sms') render();
+      }, 10000);
+
+      function onMessage(e) {
+        if (!e.data || e.data.type !== 'pdh-sms-result' || e.data.reqId !== reqId) return;
+        cleanup();
+        state.sms.loading = false;
+        var err = e.data.error;
+        if (err) {
+          var el = err.toLowerCase();
+          state.sms.error = (el.includes('denied') || el.includes('permission'))
+            ? 'PERMISSION_DENIED'
+            : err === 'bridge-unavailable' ? 'NOT_ANDROID' : err;
+        } else {
+          state.sms.messages = e.data.messages;
+          state.sms.error = null;
+        }
+        if (currentTab === 'sms') render();
+      }
+
+      cleanup = function () {
+        clearTimeout(timer);
+        window.removeEventListener('message', onMessage);
+        var f = document.getElementById('sms-bridge-frame');
+        if (f) f.remove();
+      };
+
+      window.addEventListener('message', onMessage);
+      document.body.appendChild(iframe);
+    }
+    window.loadSmsMessages = loadSmsMessages;
 
     function renderSettingsTab() {
       return \`
