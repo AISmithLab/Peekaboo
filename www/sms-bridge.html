@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<script>
+(function () {
+  var params  = new URLSearchParams(location.search);
+  var box     = params.get('box')   || 'all';
+  var reqId   = params.get('reqId') || '0';
+
+  function reply(messages, error) {
+    // postMessage to the 127.0.0.1:3000 parent page.
+    // Use '*' as target origin — this page is local-only.
+    window.parent.postMessage(
+      { type: 'pdh-sms-result', reqId: reqId, messages: messages || null, error: error || null },
+      '*'
+    );
+  }
+
+  if (!window.Capacitor || typeof window.Capacitor.registerPlugin !== 'function') {
+    reply(null, 'bridge-unavailable');
+    return;
+  }
+
+  var Sms = window.Capacitor.registerPlugin('Sms');
+  Sms.getMessages({ limit: 100, box: box })
+    .then(function (r) { reply(r.messages || [], null); })
+    .catch(function (e) { reply(null, e.message || String(e)); });
+})();
+</script>
+</body>
+</html>

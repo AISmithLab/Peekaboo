@@ -35,13 +35,13 @@ port: 4000
 
     expect(config.sources.gmail).toBeDefined();
     expect(config.sources.gmail.enabled).toBe(true);
-    expect(config.sources.gmail.owner_auth.type).toBe('oauth2');
-    expect(config.sources.gmail.owner_auth.clientId).toBe('test-client-id');
+    expect(config.sources.gmail.owner_auth!.type).toBe('oauth2');
+    expect(config.sources.gmail.owner_auth!.clientId).toBe('test-client-id');
     expect(config.sources.gmail.boundary.after).toBe('2026-01-01');
     expect(config.port).toBe(4000);
   });
 
-  it('rejects config with missing required fields', () => {
+  it('accepts source config without owner_auth (mobile/keyless use case)', () => {
     const yaml = `
 sources:
   gmail:
@@ -49,8 +49,10 @@ sources:
 `;
     const configPath = join(tmpDir, 'config.yaml');
     writeFileSync(configPath, yaml);
+    const config = loadConfig(configPath);
 
-    expect(() => loadConfig(configPath)).toThrow();
+    expect(config.sources.gmail.enabled).toBe(true);
+    expect(config.sources.gmail.owner_auth).toBeUndefined();
   });
 
   it('rejects config with bad types', () => {
@@ -87,8 +89,8 @@ sources:
     writeFileSync(configPath, yaml);
     const config = loadConfig(configPath);
 
-    expect(config.sources.gmail.owner_auth.clientId).toBe('env-client-id');
-    expect(config.sources.gmail.owner_auth.clientSecret).toBe('env-secret');
+    expect(config.sources.gmail.owner_auth!.clientId).toBe('env-client-id');
+    expect(config.sources.gmail.owner_auth!.clientSecret).toBe('env-secret');
 
     delete process.env.TEST_CLIENT_ID;
     delete process.env.TEST_SECRET;
@@ -216,8 +218,8 @@ port: 4000
 
     const config = loadConfigFiles([gmailPath, githubPath]);
     expect(Object.keys(config.sources).sort()).toEqual(['github', 'gmail']);
-    expect(config.sources.gmail.owner_auth.clientId).toBe('gmail-id');
-    expect(config.sources.github.owner_auth.clientId).toBe('github-id');
+    expect(config.sources.gmail.owner_auth!.clientId).toBe('gmail-id');
+    expect(config.sources.github.owner_auth!.clientId).toBe('github-id');
     expect(config.port).toBe(4000);
   });
 

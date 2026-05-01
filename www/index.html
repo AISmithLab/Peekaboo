@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>PersonalDataHub</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #f7f7ff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #1a1a33;
+    }
+    svg { color: #0fa081; margin-bottom: 16px; }
+    h1 { font-size: 20px; font-weight: 700; margin: 0 0 8px; }
+    #status { font-size: 14px; color: #5a6b7a; margin: 0; }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid #e2e5e9;
+      border-top-color: #0fa081;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-top: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+  <h1>PersonalDataHub</h1>
+  <p id="status">Starting&hellip;</p>
+  <div class="spinner" id="spinner"></div>
+
+  <script>
+    var SERVER_URL = 'http://127.0.0.1:3000';
+    var MAX_RETRIES = 60;
+    var retries = 0;
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    function pollServer() {
+      fetch(SERVER_URL + '/health')
+        .then(function(r) {
+          if (r.ok) {
+            setStatus('Ready — loading app\u2026');
+            window.location.href = SERVER_URL;
+          } else {
+            retry();
+          }
+        })
+        .catch(retry);
+    }
+
+    function retry() {
+      if (++retries >= MAX_RETRIES) {
+        setStatus('Server did not start after ' + MAX_RETRIES + 's. Check logs.');
+        document.getElementById('spinner').style.display = 'none';
+        return;
+      }
+      setStatus('Starting server\u2026 (' + retries + 's)');
+      setTimeout(pollServer, 1000);
+    }
+
+    function boot() {
+      // The CapacitorNodeJS plugin is configured with startMode: "auto" in
+      // capacitor.config.ts, so it starts the Node.js engine automatically
+      // when the activity launches — no manual start() call needed here.
+      // We just poll until the Hono server is ready and then navigate to it.
+      setStatus('Waiting for server\u2026');
+      setTimeout(pollServer, 1000);
+    }
+
+    document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>

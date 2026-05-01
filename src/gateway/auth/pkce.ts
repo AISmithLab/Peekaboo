@@ -33,8 +33,8 @@ export interface ResolvedCredentials {
 export function getGmailCredentials(config: HubConfigParsed): ResolvedCredentials {
   const gmailConfig = config.sources.gmail;
   return {
-    clientId: gmailConfig?.owner_auth.clientId ?? '',
-    clientSecret: gmailConfig?.owner_auth.clientSecret ?? '',
+    clientId: gmailConfig?.owner_auth?.clientId ?? '',
+    clientSecret: gmailConfig?.owner_auth?.clientSecret ?? '',
   };
 }
 
@@ -45,8 +45,8 @@ export function getGmailCredentials(config: HubConfigParsed): ResolvedCredential
 export function getGitHubCredentials(config: HubConfigParsed): ResolvedCredentials {
   const githubConfig = config.sources.github;
   return {
-    clientId: githubConfig?.owner_auth.clientId ?? '',
-    clientSecret: githubConfig?.owner_auth.clientSecret ?? '',
+    clientId: githubConfig?.owner_auth?.clientId ?? '',
+    clientSecret: githubConfig?.owner_auth?.clientSecret ?? '',
   };
 }
 
@@ -56,7 +56,7 @@ export function getGitHubCredentials(config: HubConfigParsed): ResolvedCredentia
 export function getCalendarCredentials(config: HubConfigParsed): ResolvedCredentials {
   const calConfig = config.sources.google_calendar;
   return {
-    clientId: calConfig?.owner_auth.clientId ?? '',
-    clientSecret: calConfig?.owner_auth.clientSecret ?? '',
+    clientId: calConfig?.owner_auth?.clientId ?? '',
+    clientSecret: calConfig?.owner_auth?.clientSecret ?? '',
   };
 }
